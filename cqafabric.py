@@ -21,34 +21,35 @@
  *                                                                         *
  ***************************************************************************/
 """
-from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication
+from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication, Qt
 from qgis.PyQt.QtGui import QIcon
-from qgis.PyQt.QtWidgets import QAction
+from qgis.PyQt.QtWidgets import QAction, QToolButton, QMenu
+from qgis.core import QgsDataSourceUri, QgsVectorTileLayer, QgsProject, QgsVectorLayer, QgsWkbTypes, Qgis
 
 # Initialize Qt resources from file resources.py
 from .resources import *
 # Import the code for the dialog
 from .cqafabric_dialog import CQAFabricDialog
+from .addfabrictiles_dialog import AddFabricTilesDialog
+from .retrievedata_dialog import RetrieveDataDialog
 import os.path
-
+import urllib.request
+import json
+apikey = "cq-4601df7497bb9ce596c5eb8f197b90a8"
 
 class CQAFabric:
     """QGIS Plugin Implementation."""
-
+    
     def __init__(self, iface):
-        """Constructor.
-
-        :param iface: An interface instance that will be passed to this class
-            which provides the hook by which you can manipulate the QGIS
-            application at run time.
-        :type iface: QgsInterface
-        """
-        # Save reference to the QGIS interface
         self.iface = iface
+
+        self.actions = []
+        self.menu = None
+
         # initialize plugin directory
         self.plugin_dir = os.path.dirname(__file__)
-        # initialize locale
         locale = QSettings().value('locale/userLocale')[0:2]
+
         locale_path = os.path.join(
             self.plugin_dir,
             'i18n',
@@ -58,10 +59,6 @@ class CQAFabric:
             self.translator = QTranslator()
             self.translator.load(locale_path)
             QCoreApplication.installTranslator(self.translator)
-
-        # Declare instance attributes
-        self.actions = []
-        self.menu = self.tr(u'&CQA Fabric')
 
         # Check if plugin was started the first time in current QGIS session
         # Must be set in initGui() to survive plugin reloads
@@ -161,24 +158,189 @@ class CQAFabric:
         """Create the menu entries and toolbar icons inside the QGIS GUI."""
 
         icon_path = ':/plugins/cqafabric/icon.png'
-        self.add_action(
-            icon_path,
-            text=self.tr(u'Add Fabric Tiles'),
-            callback=self.run,
-            parent=self.iface.mainWindow())
+        self.menu = self.iface.pluginMenu().addMenu(self.tr(
+            "&CQA Fabric"))
+        
+        self.toolButton = QToolButton()
+        self.toolButton.setMenu(QMenu())
+        self.toolButton.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+        self.toolButton.setPopupMode(
+            QToolButton.ToolButtonPopupMode.MenuButtonPopup)
+        toolButtonMenu = self.toolButton.menu()
 
-        # will be set False in run()
+
+         # Create action for opening the Add Fabric Tiles window
+        icon = QIcon(icon_path)
+        self.actionAddFabricTiles = QAction(icon, self.tr("Add Fabric Tiles"))
+        self.menu.addAction(self.actionAddFabricTiles)
+        toolButtonMenu.addAction(self.actionAddFabricTiles)
+        self.actionAddFabricTiles.triggered.connect(self.AddFabricTiles)
+
+        # Create action for opening the Retrieve data fields window
+        icon = QIcon(icon_path)
+        self.actionRetrieveData = QAction(icon, self.tr("Retrieve Fabric data"))
+        self.menu.addAction(self.actionRetrieveData)
+        toolButtonMenu.addAction(self.actionRetrieveData)
+        self.actionRetrieveData.triggered.connect(self.RetrieveData)
+
         self.first_start = True
 
 
     def unload(self):
-        """Removes the plugin menu item and icon from QGIS GUI."""
-        for action in self.actions:
-            self.iface.removePluginMenu(
-                self.tr(u'&CQA Fabric'),
-                action)
-            self.iface.removeToolBarIcon(action)
+        """Remove the plugin's actions from the QGIS menu and toolbars."""
+        if not self.menu:
+            # The initGui() method was never called
+            return
+        self.iface.pluginMenu().removeAction(self.menu.menuAction())
+        self.toolButton.deleteLater()
 
+    def AddFabricTiles(self):
+        self.dlg = AddFabricTilesDialog()
+        try:
+            url = "https://costquest.azure-api.net/fabric/vintages"
+
+            hdr ={
+            # Request headers
+            'Cache-Control': 'no-cache',
+            'apikey': apikey,
+            }
+
+            req = urllib.request.Request(url, headers=hdr)
+
+            req.get_method = lambda: 'GET'
+            response = urllib.request.urlopen(req)
+            if response.getcode() == 200:
+                data = json.loads(response.read())
+                vintages = [item.get('vintage') for item in data if isinstance(item, dict)]
+                print("List of vintages:", vintages)
+            else:
+                print("Failed to fetch vintages. HTTP Code:", response.getcode())
+        except Exception as e:
+            print(e)
+
+        """
+        # Get the current project and its layers
+        layers = QgsProject.instance().mapLayers().values()
+        layer_list = [layer.name() for layer in layers]
+        """
+        # Get the vintages from the API
+        layer_list = vintages
+        self.dlg.comboBox_vintage.clear()
+        self.dlg.comboBox_vintage.addItems(layer_list)
+
+        layer_list = ["locations", "footprints", "parcels"]
+        self.dlg.comboBox_layer.clear()
+        self.dlg.comboBox_layer.addItems(layer_list)
+
+        # show the dialog
+        self.dlg.show()
+        # Run the dialog event loop
+    
+        result = self.dlg.exec_()
+        # See if OK was pressed
+        if result:
+            # Do something useful here - delete the line containing pass and
+            # substitute with your code.
+            selected_vintage = self.dlg.comboBox_vintage.currentText()  # Get the selected vintage from the combo box vintage
+            selected_layer = self.dlg.comboBox_layer.currentText()  # Get the selected layer from the combo box layer
+            vector_tile_url = f"https://costquest.azure-api.net/fabric/{selected_vintage}/tiles/{selected_layer}/{{z}}/{{x}}/{{y}}"
+            styleUrl = f"https://cqazapihttp.blob.core.windows.net/$web/fabricstyles.json"
+            # Create a QgsDataSourceUri object
+            uri = QgsDataSourceUri()
+
+            # Set the required parameters
+            uri.setParam("styleUrl", styleUrl)  # Style URL
+            uri.setParam("type", "xyz")  # Style URL
+            uri.setParam("url", vector_tile_url)  # Base URL with placeholders
+            uri.setParam("zmax", "14")  # Maximum zoom level
+            if selected_layer == "locations":
+                uri.setParam("zmin", "0")  # Minimum zoom level
+            else:
+                uri.setParam("zmin", "12")
+            uri.setParam("http-header:apikey",apikey)  # API key for authentication
+            uri.setParam("http-header:Cache-Control", "no-cache")  # Cache control header
+
+            # Encode the URI
+            encoded_uri = uri.encodedUri().data().decode()
+            #self.iface.messageBar().pushMessage("Message", encoded_uri, level=Qgis.Info)
+            # Create the vector tile layer
+            vector_tile_layer = QgsVectorTileLayer(encoded_uri, f"Fabric {selected_vintage} - {selected_layer}")
+            vector_tile_layer.loadDefaultStyle()
+            # Check if the layer is valid
+            if vector_tile_layer.isValid():
+                # Add the layer to the map
+                QgsProject.instance().addMapLayer(vector_tile_layer)
+            else:
+                # Handle the case when the layer is not valid
+                self.iface.messageBar().pushMessage("Error", "Failed to load vector tile layer.", level=Qgis.Critical)
+
+    def RetrieveData(self):
+            """Run method that performs all the real work"""
+
+            # Create the dialog with elements (after translation) and keep reference
+            # Only create GUI ONCE in callback, so that it will only load when the plugin is started
+            self.dlg = RetrieveDataDialog()
+            try:
+                url = "https://costquest.azure-api.net/fabric/vintages"
+
+                hdr ={
+                # Request headers
+                'Cache-Control': 'no-cache',
+                'apikey': apikey,
+                }
+
+                req = urllib.request.Request(url, headers=hdr)
+
+                req.get_method = lambda: 'GET'
+                response = urllib.request.urlopen(req)
+                if response.getcode() == 200:
+                    data = json.loads(response.read())
+                    vintages = [item.get('vintage') for item in data if isinstance(item, dict)]
+                    print("List of vintages:", vintages)
+                else:
+                    print("Failed to fetch vintages. HTTP Code:", response.getcode())
+            except Exception as e:
+                print(e)
+
+            """
+            # Get the current project and its layers
+            layers = QgsProject.instance().mapLayers().values()
+            layer_list = [layer.name() for layer in layers]
+            """
+            # Get the vintages from the API
+            layer_list = vintages
+            self.dlg.comboBox_vintage.clear()
+            self.dlg.comboBox_vintage.addItems(layer_list)
+
+            layer_list = ["locations", "footprints", "parcels"]
+            self.dlg.comboBox_layer.clear()
+            self.dlg.comboBox_layer.addItems(layer_list)
+
+            # show the dialog
+            self.dlg.show()
+            # Run the dialog event loop
+            result = self.dlg.exec_()
+            # See if OK was pressed
+            if result:
+                # Do something useful here - delete the line containing pass and
+                # substitute with your code.
+                layer = self.iface.activeLayer()
+
+                # Get the selected features
+                selected_features = layer.selectedFeatures()
+
+                if not selected_features:
+                    self.iface.messageBar().pushMessage("Info", "No features selected.", level=Qgis.Info)
+                    return False
+
+                # Check if all selected features are polygons
+                for feature in selected_features:
+                    if feature.geometry().type() != QgsWkbTypes.PolygonGeometry:
+                        self.iface.messageBar().pushMessage("Error", "Not all selected features are polygons.", level=Qgis.Critical)
+                        return False
+
+                self.iface.messageBar().pushMessage("Success", "All selected features are polygons.", level=Qgis.Success)
+                return True
 
     def run(self):
         """Run method that performs all the real work"""
