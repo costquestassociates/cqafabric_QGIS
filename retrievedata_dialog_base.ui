@@ -143,7 +143,7 @@
     <string>Fabric</string>
    </property>
   </widget>
-  <widget class="QCheckBox" name="checkBox">
+  <widget class="QCheckBox" name="checkBox_selection">
    <property name="geometry">
     <rect>
      <x>170</x>
@@ -162,6 +162,9 @@
    </property>
    <property name="text">
     <string>Use Selection?</string>
+   </property>
+   <property name="checked">
+    <bool>true</bool>
    </property>
   </widget>
  </widget>

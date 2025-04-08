@@ -24,7 +24,7 @@
 from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication, Qt
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction, QToolButton, QMenu
-from qgis.core import QgsDataSourceUri, QgsVectorTileLayer, QgsProject, QgsVectorLayer, QgsWkbTypes, Qgis
+from qgis.core import QgsDataSourceUri, QgsVectorTileLayer, QgsProject, QgsVectorLayer, QgsWkbTypes, Qgis, QgsJsonExporter
 
 # Initialize Qt resources from file resources.py
 from .resources import *
@@ -325,23 +325,94 @@ class CQAFabric:
                 # Do something useful here - delete the line containing pass and
                 # substitute with your code.
                 layer = self.iface.activeLayer()
-
-                # Get the selected features
-                selected_features = layer.selectedFeatures()
-
-                if not selected_features:
-                    self.iface.messageBar().pushMessage("Info", "No features selected.", level=Qgis.Info)
-                    return False
-
+                
+                if self.dlg.checkBox_selection.isChecked(): # Use only selected features
+                    selected_features = layer.selectedFeatures()
+                    self.iface.messageBar().pushMessage("Info", "Use only selected features", level=Qgis.Info)
+                       
+                    if not selected_features:
+                        self.iface.messageBar().pushMessage("Info", "No features selected.", level=Qgis.Info)
+                        return False
+                else:   # Use all features
+                    layer.selectAll()
+                    selected_features = layer.selectedFeatures()
+                    self.iface.messageBar().pushMessage("Info", "Use all features", level=Qgis.Info)
+                      
                 # Check if all selected features are polygons
                 for feature in selected_features:
                     if feature.geometry().type() != QgsWkbTypes.PolygonGeometry:
                         self.iface.messageBar().pushMessage("Error", "Not all selected features are polygons.", level=Qgis.Critical)
                         return False
+                    
+                # Use QgsJsonExporter to export selected features to GeoJSON    
+                exporter = QgsJsonExporter(layer)
+                geojson_str = exporter.exportFeatures(selected_features)  
 
-                self.iface.messageBar().pushMessage("Success", "All selected features are polygons.", level=Qgis.Success)
-                return True
+                if geojson_str is None:
+                    self.iface.messageBar().pushMessage("Error", "Failed to export features to GeoJSON.", level=Qgis.Critical)
+                    return False
 
+                try:
+                    # Save the GeoJSON to a file
+                    output_file = os.path.join(self.plugin_dir, "selected_features_temp.geojson")
+                    with open(output_file, "w") as f:
+                        f.write(geojson_str)
+
+                    input_file = output_file
+                    output_file = os.path.join(self.plugin_dir, "selected_features.geojson")
+                    
+                    # Load the GeoJSON file
+                    with open(input_file, "r") as f:
+                        geojson_data = json.load(f)
+
+                    # Extract only the geometry part
+                    geometries = [feature["geometry"] for feature in geojson_data.get("features", [])]
+
+                    if not geometries:
+                        self.iface.messageBar().pushMessage("Error", "No geometries found in the GeoJSON.", level=Qgis.Critical)
+                        return False
+
+                    # Save the geometries to a new JSON file
+                    with open(output_file, "w") as f:
+                        json.dump(geometries[0], f, indent=2)
+                    
+                    # Delete the original file
+                    os.remove(input_file)
+
+                    self.iface.messageBar().pushMessage("Success", f"GeoJSON exported to {output_file}", level=Qgis.Success)
+                except Exception as e:
+                    self.iface.messageBar().pushMessage("Error", f"An error occurred: {str(e)}", level=Qgis.Critical)
+                    return False
+                
+
+                try:
+                    url = "https://costquest.azure-api.net/fabric/202406/collect"
+
+                    hdr ={
+                    # Request headers
+                    'Content-Type': 'application/json',
+                    'Cache-Control': 'no-cache',
+                    'apikey': apikey,
+                    }
+
+                    # Request body
+                    with open(output_file, 'rb') as f:
+                        data = f.read()
+                    req = urllib.request.Request(url, headers=hdr, data = bytes(data))
+
+                    req.get_method = lambda: 'POST'
+                    response = urllib.request.urlopen(req)
+                    print(response.getcode())
+                    data = json.loads(response.read())
+                    uuids = [item for item in data if isinstance(item, str)]
+                    output_file = os.path.join(self.plugin_dir, "selected_uuids.json")
+                    with open(output_file, "w") as f:
+                        json.dump(uuids, f, indent=2)
+                    
+                except Exception as e:
+                    print(e)
+
+    
     def run(self):
         """Run method that performs all the real work"""
 
