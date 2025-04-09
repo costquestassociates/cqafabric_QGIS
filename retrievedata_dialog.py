@@ -79,5 +79,6 @@ class RetrieveDataDialog(QtWidgets.QDialog, FORM_CLASS):
         if self._layer != layer:
             self._layer = layer
             self.layerChanged.emit(self._layer)
+            iface.setActiveLayer(layer)
 
 

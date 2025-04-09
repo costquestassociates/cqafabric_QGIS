@@ -318,6 +318,9 @@ class CQAFabric:
 
             # show the dialog
             self.dlg.show()
+            layer = self.iface.activeLayer()
+            self.dlg.pushButton_ChgSelect.clicked.connect(lambda: self.iface.showAttributeTable(self.iface.activeLayer()) if layer is not None else self.iface.messageBar().pushMessage("Info", "Select a layer", level=Qgis.Info))
+
             # Run the dialog event loop
             result = self.dlg.exec_()
             # See if OK was pressed
@@ -325,7 +328,7 @@ class CQAFabric:
                 # Do something useful here - delete the line containing pass and
                 # substitute with your code.
                 layer = self.iface.activeLayer()
-                
+                # Open attribute table of the active layer
                 if self.dlg.checkBox_selection.isChecked(): # Use only selected features
                     selected_features = layer.selectedFeatures()
                     self.iface.messageBar().pushMessage("Info", "Use only selected features", level=Qgis.Info)
@@ -377,7 +380,7 @@ class CQAFabric:
                         json.dump(geometries[0], f, indent=2)
                     
                     # Delete the original file
-                    os.remove(input_file)
+                    #os.remove(input_file)
 
                     self.iface.messageBar().pushMessage("Success", f"GeoJSON exported to {output_file}", level=Qgis.Success)
                 except Exception as e:
@@ -386,7 +389,9 @@ class CQAFabric:
                 
 
                 try:
-                    url = "https://costquest.azure-api.net/fabric/202406/collect"
+                    selected_vintage = self.dlg.comboBox_vintage.currentText()  # Get the selected vintage from the combo box vintage
+                    selected_layer = self.dlg.comboBox_layer.currentText()  # Get the selected layer from the combo box layer
+                    url = f"https://costquest.azure-api.net/fabric/{selected_vintage}/collect"
 
                     hdr ={
                     # Request headers
@@ -408,9 +413,10 @@ class CQAFabric:
                     output_file = os.path.join(self.plugin_dir, "selected_uuids.json")
                     with open(output_file, "w") as f:
                         json.dump(uuids, f, indent=2)
-                    
+                    self.iface.messageBar().pushMessage("Success", f"uuid information exported to {output_file}", level=Qgis.Success)
                 except Exception as e:
-                    print(e)
+                    self.iface.messageBar().pushMessage("Error", f"An error occurred: {str(e)}", level=Qgis.Critical)
+                    return False
 
     
     def run(self):
