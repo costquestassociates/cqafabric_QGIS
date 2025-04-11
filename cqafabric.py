@@ -24,7 +24,8 @@
 from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication, Qt
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction, QToolButton, QMenu
-from qgis.core import QgsDataSourceUri, QgsVectorTileLayer, QgsProject, QgsVectorLayer, QgsWkbTypes, Qgis, QgsJsonExporter
+from qgis.core import QgsDataSourceUri, QgsVectorTileLayer, QgsProject, QgsVectorLayer, QgsWkbTypes, Qgis, QgsJsonExporter, QgsProcessingFeatureSourceDefinition, QgsFeatureRequest, QgsCoordinateReferenceSystem
+import processing
 
 # Initialize Qt resources from file resources.py
 from .resources import *
@@ -35,11 +36,18 @@ from .retrievedata_dialog import RetrieveDataDialog
 import os.path
 import urllib.request
 import json
+import requests
+import time
 apikey = "cq-4601df7497bb9ce596c5eb8f197b90a8"
+baseuri = "https://api.costquest.com/"
+collect_calls = 0
+divide_calls = 0
+ids = []
 
 class CQAFabric:
     """QGIS Plugin Implementation."""
     
+
     def __init__(self, iface):
         self.iface = iface
 
@@ -275,6 +283,9 @@ class CQAFabric:
                 self.iface.messageBar().pushMessage("Error", "Failed to load vector tile layer.", level=Qgis.Critical)
 
     def RetrieveData(self):
+            global ids
+            global collect_calls
+            global divide_calls
             """Run method that performs all the real work"""
 
             # Create the dialog with elements (after translation) and keep reference
@@ -346,10 +357,19 @@ class CQAFabric:
                     if feature.geometry().type() != QgsWkbTypes.PolygonGeometry:
                         self.iface.messageBar().pushMessage("Error", "Not all selected features are polygons.", level=Qgis.Critical)
                         return False
-                    
+                
+                # Create new layer based on selected features
+                # Create a new layer with the same geometry type as the original layer
+                new_layer=processing.run("native:saveselectedfeatures", {'INPUT':layer,'OUTPUT':'TEMPORARY_OUTPUT'})['OUTPUT']
+                dissolved = processing.run("native:dissolve", {'INPUT': new_layer,'FIELD':[],'SEPARATE_DISJOINT':False, 'OUTPUT': 'TEMPORARY_OUTPUT'})['OUTPUT']
+                dissolved_features = list(dissolved.getFeatures())
+                
                 # Use QgsJsonExporter to export selected features to GeoJSON    
-                exporter = QgsJsonExporter(layer)
-                geojson_str = exporter.exportFeatures(selected_features)  
+                exporter = QgsJsonExporter(dissolved)
+                exporter.setincludeattributes = False
+                exporter.setincludegeometry = True
+
+                geojson_str = exporter.exportFeatures(dissolved_features)  
 
                 if geojson_str is None:
                     self.iface.messageBar().pushMessage("Error", "Failed to export features to GeoJSON.", level=Qgis.Critical)
@@ -387,11 +407,30 @@ class CQAFabric:
                     self.iface.messageBar().pushMessage("Error", f"An error occurred: {str(e)}", level=Qgis.Critical)
                     return False
                 
+                
+                
+                selected_vintage = self.dlg.comboBox_vintage.currentText()  # Get the selected vintage from the combo box vintage
+                # string of geojson boundary to collect on
+                geojson = open(output_file, "r").read()
 
+                # recursive collect method
+                starttime = time.time()
+                collect_calls = 0
+                divide_calls = 0
+                ids = []
+                collect(json.loads(geojson),selected_vintage)
+                endtime = time.time()
+                        
+                # there's a chance certain points are perfectly on borders of boundaries, account for rare chance of duplicates
+                ids = list(set(ids))
+                output_file = os.path.join(self.plugin_dir, "selected_uuids.json")
+                with open(output_file, "w") as f:
+                    json.dump(ids[:1000], f, indent=2)
+                self.iface.messageBar().pushMessage("Success", "found " + str(len(ids)) + " ids in " + str(int(endtime-starttime)) + "s", level=Qgis.Success)
+
+                # Create a new GeoJSON file with the UUIDs
                 try:
-                    selected_vintage = self.dlg.comboBox_vintage.currentText()  # Get the selected vintage from the combo box vintage
-                    selected_layer = self.dlg.comboBox_layer.currentText()  # Get the selected layer from the combo box layer
-                    url = f"https://costquest.azure-api.net/fabric/{selected_vintage}/collect"
+                    url = "https://costquest.azure-api.net/fabric/202406/bulk/locations?field=latitude,longitude"
 
                     hdr ={
                     # Request headers
@@ -407,16 +446,24 @@ class CQAFabric:
 
                     req.get_method = lambda: 'POST'
                     response = urllib.request.urlopen(req)
-                    print(response.getcode())
                     data = json.loads(response.read())
-                    uuids = [item for item in data if isinstance(item, str)]
-                    output_file = os.path.join(self.plugin_dir, "selected_uuids.json")
+                    # Convert data to csv table with uuid, latitude, longitude columns
+                    csv_data = "uuid,latitude,longitude\n"
+                    for item in data:
+                        if isinstance(item, dict):
+                            uuid = item.get("uuid")
+                            latitude = item.get("latitude")
+                            longitude = item.get("longitude")
+                            csv_data += f"{uuid},{latitude},{longitude}\n"
+                    output_file = os.path.join(self.plugin_dir, "selected_uuids.csv")
                     with open(output_file, "w") as f:
-                        json.dump(uuids, f, indent=2)
+                        f.write(csv_data)
                     self.iface.messageBar().pushMessage("Success", f"uuid information exported to {output_file}", level=Qgis.Success)
                 except Exception as e:
                     self.iface.messageBar().pushMessage("Error", f"An error occurred: {str(e)}", level=Qgis.Critical)
                     return False
+                output_file
+                processing.run("native:createpointslayerfromtable", {'INPUT':output_file,'XFIELD':'longitude','YFIELD':'latitude','ZFIELD':'','MFIELD':'','TARGET_CRS':QgsCoordinateReferenceSystem('EPSG:4326'),'OUTPUT':'D:/D_Temp/seleted_features.shp'})
 
     
     def run(self):
@@ -437,3 +484,19 @@ class CQAFabric:
             # Do something useful here - delete the line containing pass and
             # substitute with your code.
             pass
+    
+def collect(geojson,selected_vintage):
+    global ids
+    global collect_calls
+    global divide_calls
+    collect_calls += 1
+    collect_ids = requests.post(baseuri + "fabric/" + selected_vintage + "/collect", json=geojson, headers={"apikey": apikey}).json()
+    if len(collect_ids)>=5000:
+        divide_results = requests.post(baseuri + "geosvc/divide", json=geojson, headers={"apikey": apikey}).json()
+        for db in divide_results:
+            divide_calls += 1
+            print("divide " + str(divide_calls))
+            collect(geojson,selected_vintage)
+    else:
+        print("adding " + str(len(collect_ids)) + " ids")
+        ids = ids + collect_ids
