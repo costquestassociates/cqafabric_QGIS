@@ -25,7 +25,7 @@
         </size>
        </property>
        <property name="text">
-        <string>Attribute to show</string>
+        <string>Layer</string>
        </property>
       </widget>
      </item>
@@ -61,7 +61,7 @@
        <item>
         <widget class="QLabel" name="availableLbl">
          <property name="text">
-          <string>Matching Features</string>
+          <string>Matching Fields</string>
          </property>
         </widget>
        </item>
@@ -178,7 +178,7 @@
        <item>
         <widget class="QLabel" name="selectedLbl">
          <property name="text">
-          <string>Selected Features</string>
+          <string>Selected Fields</string>
          </property>
         </widget>
        </item>

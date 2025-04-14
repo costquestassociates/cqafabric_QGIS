@@ -180,17 +180,28 @@
     <string>Change Selection</string>
    </property>
   </widget>
-  <widget class="QPushButton" name="pushButton_AddData">
+  <widget class="QCheckBox" name="checkBox_addlocations">
    <property name="geometry">
     <rect>
      <x>50</x>
-     <y>300</y>
-     <width>481</width>
-     <height>31</height>
+     <y>340</y>
+     <width>201</width>
+     <height>17</height>
     </rect>
    </property>
+   <property name="font">
+    <font>
+     <family>Arial</family>
+     <pointsize>8</pointsize>
+     <weight>75</weight>
+     <bold>true</bold>
+    </font>
+   </property>
    <property name="text">
-    <string>Export Fabric Locations to Map</string>
+    <string>Add Fabric Locations  to Map?</string>
+   </property>
+   <property name="checked">
+    <bool>false</bool>
    </property>
   </widget>
  </widget>

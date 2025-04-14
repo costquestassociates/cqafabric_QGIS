@@ -332,6 +332,7 @@ class CQAFabric:
             layer = self.iface.activeLayer()
             self.dlg.pushButton_ChgSelect.clicked.connect(lambda: self.iface.showAttributeTable(self.iface.activeLayer()) if layer is not None else self.iface.messageBar().pushMessage("Info", "Select a layer", level=Qgis.Info))
 
+            
             # Run the dialog event loop
             result = self.dlg.exec_()
             # See if OK was pressed
@@ -424,47 +425,70 @@ class CQAFabric:
                 # there's a chance certain points are perfectly on borders of boundaries, account for rare chance of duplicates
                 ids = list(set(ids))
                 output_file = os.path.join(self.plugin_dir, "selected_uuids.json")
+                # Create a new GeoJSON file with the UUIDs
                 with open(output_file, "w") as f:
-                    json.dump(ids[:1000], f, indent=2)
+                    json.dump(ids, f, indent=2)
                 self.iface.messageBar().pushMessage("Success", "found " + str(len(ids)) + " ids in " + str(int(endtime-starttime)) + "s", level=Qgis.Success)
 
-                # Create a new GeoJSON file with the UUIDs
-                try:
-                    url = "https://costquest.azure-api.net/fabric/202406/bulk/locations?field=latitude,longitude"
+                #when checkBox_addlocations botton is clicked
+                if self.dlg.checkBox_addlocations.isChecked():
+                    try:
+                        url = "https://costquest.azure-api.net/fabric/202406/bulk/locations?field=latitude,longitude"
 
-                    hdr ={
-                    # Request headers
-                    'Content-Type': 'application/json',
-                    'Cache-Control': 'no-cache',
-                    'apikey': apikey,
-                    }
+                        hdr ={
+                        # Request headers
+                        'Content-Type': 'application/json',
+                        'Cache-Control': 'no-cache',
+                        'apikey': apikey,
+                        }
 
-                    # Request body
-                    with open(output_file, 'rb') as f:
-                        data = f.read()
-                    req = urllib.request.Request(url, headers=hdr, data = bytes(data))
+                        # Request body
+                        # Read the JSON file
+                        with open(output_file, 'r') as f:
+                            data = json.load(f)
+                        batch_size = 1000  # Number of records to process at a time
+                        total_records = len(data)
+                        combined_data = []
 
-                    req.get_method = lambda: 'POST'
-                    response = urllib.request.urlopen(req)
-                    data = json.loads(response.read())
-                    # Convert data to csv table with uuid, latitude, longitude columns
-                    csv_data = "uuid,latitude,longitude\n"
-                    for item in data:
-                        if isinstance(item, dict):
-                            uuid = item.get("uuid")
-                            latitude = item.get("latitude")
-                            longitude = item.get("longitude")
-                            csv_data += f"{uuid},{latitude},{longitude}\n"
-                    output_file = os.path.join(self.plugin_dir, "selected_uuids.csv")
-                    with open(output_file, "w") as f:
-                        f.write(csv_data)
-                    self.iface.messageBar().pushMessage("Success", f"uuid information exported to {output_file}", level=Qgis.Success)
-                except Exception as e:
-                    self.iface.messageBar().pushMessage("Error", f"An error occurred: {str(e)}", level=Qgis.Critical)
-                    return False
-                output_file
-                processing.run("native:createpointslayerfromtable", {'INPUT':output_file,'XFIELD':'longitude','YFIELD':'latitude','ZFIELD':'','MFIELD':'','TARGET_CRS':QgsCoordinateReferenceSystem('EPSG:4326'),'OUTPUT':'D:/D_Temp/seleted_features.shp'})
+                        for start in range(0, total_records, batch_size):
+                            # Get the current batch of records
+                            batch = data[start:start + batch_size]
 
+                            req = urllib.request.Request(url, headers=hdr, data=json.dumps(batch).encode('utf-8'))
+
+                            req.get_method = lambda: 'POST'
+                            response = urllib.request.urlopen(req)
+                            response_data = json.loads(response.read())
+                            combined_data.extend(response_data)
+                        # Convert data to csv table with uuid, latitude, longitude columns
+                        csv_data = "uuid,latitude,longitude\n"
+                        for item in combined_data:
+                            if isinstance(item, dict):
+                                uuid = item.get("uuid")
+                                latitude = item.get("latitude")
+                                longitude = item.get("longitude")
+                                csv_data += f"{uuid},{latitude},{longitude}\n"
+                        output_file = os.path.join(self.plugin_dir, "selected_uuids.csv")
+                        with open(output_file, "w") as f:
+                            f.write(csv_data)
+                        self.iface.messageBar().pushMessage("Success", f"uuid information exported to {output_file}", level=Qgis.Success)
+                        
+                        # Convert the CSV file to a shapefile
+                        csv2shp = processing.run("native:createpointslayerfromtable", {
+                            'INPUT': output_file,
+                            'XFIELD': 'longitude',
+                            'YFIELD': 'latitude',
+                            'ZFIELD': '',
+                            'MFIELD': '',
+                            'TARGET_CRS': QgsCoordinateReferenceSystem('EPSG:4326'),
+                            'OUTPUT': 'TEMPORARY_OUTPUT'
+                        })['OUTPUT']
+                        # Add the layer to the map
+                        QgsProject.instance().addMapLayer(csv2shp)
+                    except Exception as e:
+                        self.iface.messageBar().pushMessage("Error", f"An error occurred: {str(e)}", level=Qgis.Critical)
+                        return False
+                    
     
     def run(self):
         """Run method that performs all the real work"""
