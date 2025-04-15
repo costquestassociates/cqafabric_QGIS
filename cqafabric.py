@@ -414,19 +414,20 @@ class CQAFabric:
                 selected_vintage = self.dlg.comboBox_vintage.currentText()  # Get the selected vintage from the combo box vintage
                 selected_layer = self.dlg.comboBox_layer.currentText()  # Get the selected layer from the combo box layer
                 # string of geojson boundary to collect on
-                geojson = open(output_file, "r").read()
+                with open(output_file, "r") as file:
+                    geojson = file.read()
 
-                # recursive collect method
-                starttime = time.time()
-                collect_calls = 0
-                divide_calls = 0
-                ids = []
-                collect(json.loads(geojson),selected_vintage)
-                endtime = time.time()
+                    # recursive collect method
+                    starttime = time.time()
+                    collect_calls = 0
+                    divide_calls = 0
+                    ids = []
+                    collect(json.loads(geojson),selected_vintage)
+                    endtime = time.time()
                         
                 # there's a chance certain points are perfectly on borders of boundaries, account for rare chance of duplicates
                 ids = list(set(ids))
-                output_file = os.path.join(self.plugin_dir, "selected_uuids.json")
+                uuidjson_file = os.path.join(self.plugin_dir, "selected_uuids.json")
                 # Create a new GeoJSON file with the UUIDs
                 with open(output_file, "w") as f:
                     json.dump(ids, f, indent=2)
@@ -438,7 +439,7 @@ class CQAFabric:
                     item = self.dlg.selectedFeaturesLw.item(i)
                     selected_fields.append(item.text())
                
-                combined_data = bulk(output_file,selected_fields,selected_vintage,selected_layer)
+                combined_data = bulk(uuidjson_file,selected_fields,selected_vintage,selected_layer)
                 # Convert data to CSV file
                 output_file = os.path.join(self.plugin_dir, "selected_fabricdata.csv")
                 
@@ -462,7 +463,8 @@ class CQAFabric:
                 #when checkBox_addlocations botton is clicked
                 if self.dlg.checkBox_addlocations.isChecked():
                     try:
-                        combined_data = bulk(output_file,['latitude','longitude'],selected_vintage,"locations")
+                        combined_data = bulk(uuidjson_file,['latitude','longitude'],selected_vintage,"locations")
+                        output_file = os.path.join(self.plugin_dir, "selected_locations.csv")
                         with open(output_file, mode="w", newline="") as file:
                         # Get all keys from the first inner dictionary (assuming all dictionaries have the same structure)
                             fieldnames = list(next(iter(combined_data.values())).keys())
