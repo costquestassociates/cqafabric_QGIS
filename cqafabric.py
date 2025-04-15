@@ -488,6 +488,7 @@ class CQAFabric:
                     except Exception as e:
                         self.iface.messageBar().pushMessage("Error", f"An error occurred: {str(e)}", level=Qgis.Critical)
                         return False
+                
                     
     
     def run(self):

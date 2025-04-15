@@ -26,10 +26,13 @@ import os
 
 from qgis.PyQt import uic, QtCore
 from qgis.PyQt import QtWidgets
-from qgis.core import QgsMapLayerProxyModel, QgsVectorLayer, QgsProject, QgsMapLayer
+from qgis.PyQt.QtWidgets import QListWidget, QListWidgetItem
+from qgis.core import QgsMapLayerProxyModel, QgsVectorLayer, QgsProject, QgsMapLayer, QgsApplication
 from qgis.gui import QgsMapLayerComboBox
 from qgis.utils import iface
-
+import urllib.request
+import json
+apikey = "cq-4601df7497bb9ce596c5eb8f197b90a8"
 # This loads your .ui file so that PyQt can populate your plugin with the elements from Qt Designer
 FORM_CLASS, _ = uic.loadUiType(os.path.join(
     os.path.dirname(__file__), 'retrievedata_dialog_base.ui'))
@@ -47,6 +50,12 @@ class RetrieveDataDialog(QtWidgets.QDialog, FORM_CLASS):
         self.setupUi(self)
         self._initConnections()
         self._layer: QgsVectorLayer = None
+        self._featureLabel: str = None
+        self.selectAllBtn.setAutoDefault(False)
+        self.selectSingleBtn.setAutoDefault(False)
+        self.unselectSingleBtn.setAutoDefault(False)
+        self.unselectAllBtn.setAutoDefault(False)
+
 
     def _initConnections(self):
         self.mapVlayersCb.setFilters(QgsMapLayerProxyModel.VectorLayer)
@@ -55,6 +64,12 @@ class RetrieveDataDialog(QtWidgets.QDialog, FORM_CLASS):
         self.mapVlayersCb.activated.connect(self._layerActivated)
         inst: QgsProject = QgsProject.instance()
         inst.layerRemoved.connect(self._layerRemoved)
+
+        self.comboBox_layer.currentIndexChanged.connect(self._layerFieldChanged)
+        self.selectAllBtn.clicked.connect(self.move_all_to_selection)
+        self.selectSingleBtn.clicked.connect(self.move_selected_to_selection)
+        self.unselectSingleBtn.clicked.connect(self.remove_selected_from_selection)
+        self.unselectAllBtn.clicked.connect(self.remove_all_from_selection)
 
     def layer(self):
         return self._layer
@@ -82,3 +97,141 @@ class RetrieveDataDialog(QtWidgets.QDialog, FORM_CLASS):
             iface.setActiveLayer(layer)
 
 
+
+
+
+
+    def _layerFieldChanged(self, label: str):
+        self._featureLabel = label
+        self.rename_items(self, self.availableFeaturesLw)
+        self.selectedFeaturesLw.clear()
+
+
+    def removeFeatures(self):
+        self.availableFeaturesLw.clear()
+        self.selectedFeaturesLw.clear()
+
+    def populateFeatures(self):
+        """Populates the features list from the faceted layer.
+
+        If more than 1000 features are currently visible, the list is truncated
+        and a placeholder "..." is appended to ensure performance.
+        """
+        self.availableFeaturesLw.clear()
+        self.selectedFeaturesLw.clear()
+        vintage= self.comboBox_vintage.currentText()
+        layer= self.comboBox_layer.currentText()
+
+        list = RetrieveDataDialog.getavailablefeatures(vintage,layer)
+
+        if list:
+            # Populate the available features list widget with field names
+            for field in list:
+                item = QListWidgetItem(field)  # Create item with text directly
+                self.availableFeaturesLw.addItem(item)
+        else:
+            self.removeFeatures()
+
+    def move_all_to_selection(self):
+        """Moves *all* available Features into selection."""
+        self.move_all_items(self.availableFeaturesLw, self.selectedFeaturesLw)
+
+
+    def move_selected_to_selection(self):
+        """Moves all *selected* available Features into selection."""
+        self.move_selected_items(self.availableFeaturesLw, self.selectedFeaturesLw)
+
+
+    def remove_all_from_selection(self):
+        """Removes *all* Features from current selection."""
+        self.move_all_items(self.selectedFeaturesLw, self.availableFeaturesLw)
+
+    def remove_selected_from_selection(self):
+        """Removes all *selected* Features from current selection."""
+        self.move_selected_items(self.selectedFeaturesLw, self.availableFeaturesLw)
+
+
+    
+    def getavailablefeatures(vintage:str,layer:str):
+        url = f"https://costquest.azure-api.net/fabric/{vintage}/fields/{layer}"
+
+        hdr ={
+        # Request headers
+        'Cache-Control': 'no-cache',
+        'apikey': apikey,
+        }
+
+        req = urllib.request.Request(url, headers=hdr)
+
+        req.get_method = lambda: 'GET'
+        response = urllib.request.urlopen(req)
+        if response.getcode() == 200:
+            data = json.loads(response.read())
+            fieldnames = [item.get('fieldname') for item in data if isinstance(item, dict)]
+            print("List of fieldname:", fieldnames)
+            fieldnames.sort(reverse=True)
+            return fieldnames
+        else:
+            print("Failed to fetch fieldname. HTTP Code:", response.getcode())
+
+
+
+
+    @staticmethod
+    def rename_items(self, listWidget: QListWidget):
+        vintage= self.comboBox_vintage.currentText()
+        layer= self.comboBox_layer.currentText()
+
+        list = RetrieveDataDialog.getavailablefeatures(vintage,layer)
+        listWidget.clear()
+        for field in reversed(list):
+            item = QListWidgetItem(field)
+            listWidget.addItem(item)
+
+    @staticmethod
+    def move_all_items(listWidget_a, listWidget_b):
+        """Moves all items from one ListWidget to another.
+
+        Args:
+            listWidget_a: The originating ListWidget
+            listWidget_b: The target ListWidget
+        """
+        # via https://stackoverflow.com/questions/9713298/pyqt4-move-items-from-one-qlistwidget-to-another
+        # sort rows in descending order in order to compensate shifting due to takeItem
+        # this also applies to the other methods in this context
+        for row in reversed(range(listWidget_a.count())):
+            listWidget_b.addItem(listWidget_a.takeItem(row))
+        listWidget_b.sortItems()
+
+        # force update, otherwise sometimes it took SECONDS, at least in 3.4
+        # FIXME investigate reason and implement proper fix
+        QgsApplication.processEvents()
+
+    @staticmethod
+    def move_selected_items(listWidget_a, listWidget_b):
+        """Moves selected items from one ListWidget to another.
+
+        Args:
+            listWidget_a: The originating ListWidget
+            listWidget_b: The target ListWidget
+        """
+        rows = sorted([index.row() for index in listWidget_a.selectedIndexes()], reverse=True)
+        for row in rows:
+            listWidget_b.addItem(listWidget_a.takeItem(row))
+        listWidget_b.sortItems()
+
+        # force update, otherwise sometimes it took SECONDS, at least in 3.4
+        # FIXME investigate reason and implement proper fix
+        QgsApplication.processEvents()
+
+    def selected_features_ids(self):
+        """Returns the IDs of the features currently selected by the user.
+
+        Returns:
+            A list of feature IDs
+        """
+        ids = []
+        for row in range(self.selectedFeaturesLw.count()):
+            item = self.selectedFeaturesLw.item(row)
+            ids.append(item.data(Qt.UserRole))
+        return ids
