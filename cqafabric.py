@@ -441,7 +441,7 @@ class CQAFabric:
                
                 combined_data = bulk(uuidjson_file,selected_fields,selected_vintage,selected_layer)
                 # Convert data to CSV file
-                output_file = os.path.join(self.plugin_dir, "selected_fabricdata.csv")
+                csvoutput_file = os.path.join(self.plugin_dir, "selected_fabricdata.csv")
                 
                 with open(output_file, mode="w", newline="") as file:
                     
@@ -456,8 +456,18 @@ class CQAFabric:
                     for inner_dict in combined_data.values():
                         writer.writerow(inner_dict)
 
-                self.iface.messageBar().pushMessage("Success", f"Fabric data exported to {output_file}", level=Qgis.Success)
+                self.iface.messageBar().pushMessage("Success", f"Fabric data exported to {csvoutput_file}", level=Qgis.Success)
                 
+                # Add the CSV file to the map as delimited text layer
+                # Create a QgsDataSourceUri object
+                uri = "file:///{}?type={}&detectTypes={}&geomType={}".format(csvoutput_file, "csv", "yes", "none")
+            
+
+                # Create a new delimited text layer
+                delimited_layer = QgsVectorLayer(uri, "selected_fabricdata", "delimitedtext")
+                QgsProject.instance().addMapLayer(delimited_layer)
+
+            
 
 
                 #when checkBox_addlocations botton is clicked
@@ -489,7 +499,8 @@ class CQAFabric:
                             'OUTPUT': 'TEMPORARY_OUTPUT'
                         })['OUTPUT']
                         # Add the layer to the map
-                        QgsProject.instance().addMapLayer(csv2shp)
+                        joinshp=processing.run("native:joinattributestable", {'INPUT':csv2shp,'FIELD':'uuid','INPUT_2':csvoutput_file,'FIELD_2':'uuid','FIELDS_TO_COPY':[],'METHOD':1,'DISCARD_NONMATCHING':False,'PREFIX':'','OUTPUT':'TEMPORARY_OUTPUT'})['OUTPUT']
+                        QgsProject.instance().addMapLayer(joinshp)
                     except Exception as e:
                         self.iface.messageBar().pushMessage("Error", f"An error occurred: {str(e)}", level=Qgis.Critical)
                         return False
