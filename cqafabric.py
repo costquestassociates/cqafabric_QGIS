@@ -38,6 +38,7 @@ import urllib.request
 import json
 import requests
 import time
+import csv
 apikey = "cq-4601df7497bb9ce596c5eb8f197b90a8"
 baseuri = "https://api.costquest.com/"
 collect_calls = 0
@@ -411,6 +412,7 @@ class CQAFabric:
                 
                 
                 selected_vintage = self.dlg.comboBox_vintage.currentText()  # Get the selected vintage from the combo box vintage
+                selected_layer = self.dlg.comboBox_layer.currentText()  # Get the selected layer from the combo box layer
                 # string of geojson boundary to collect on
                 geojson = open(output_file, "r").read()
 
@@ -430,47 +432,48 @@ class CQAFabric:
                     json.dump(ids, f, indent=2)
                 self.iface.messageBar().pushMessage("Success", "found " + str(len(ids)) + " ids in " + str(int(endtime-starttime)) + "s", level=Qgis.Success)
 
+                #Get the list of fields from selectedFeaturesLw list widget
+                selected_fields = []
+                for i in range(self.dlg.selectedFeaturesLw.count()):
+                    item = self.dlg.selectedFeaturesLw.item(i)
+                    selected_fields.append(item.text())
+               
+                combined_data = bulk(output_file,selected_fields,selected_vintage,selected_layer)
+                # Convert data to CSV file
+                output_file = os.path.join(self.plugin_dir, "selected_fabricdata.csv")
+                
+                with open(output_file, mode="w", newline="") as file:
+                    
+                # Get all keys from the first inner dictionary (assuming all dictionaries have the same structure)
+                    fieldnames = list(next(iter(combined_data.values())).keys())
+                    writer = csv.DictWriter(file, fieldnames=fieldnames)
+                    
+                    # Write the header
+                    writer.writeheader()
+                    
+                    # Write each inner dictionary as a row
+                    for inner_dict in combined_data.values():
+                        writer.writerow(inner_dict)
+
+                self.iface.messageBar().pushMessage("Success", f"Fabric data exported to {output_file}", level=Qgis.Success)
+                
+
+
                 #when checkBox_addlocations botton is clicked
                 if self.dlg.checkBox_addlocations.isChecked():
                     try:
-                        url = "https://costquest.azure-api.net/fabric/202406/bulk/locations?field=latitude,longitude"
-
-                        hdr ={
-                        # Request headers
-                        'Content-Type': 'application/json',
-                        'Cache-Control': 'no-cache',
-                        'apikey': apikey,
-                        }
-
-                        # Request body
-                        # Read the JSON file
-                        with open(output_file, 'r') as f:
-                            data = json.load(f)
-                        batch_size = 1000  # Number of records to process at a time
-                        total_records = len(data)
-                        combined_data = []
-
-                        for start in range(0, total_records, batch_size):
-                            # Get the current batch of records
-                            batch = data[start:start + batch_size]
-
-                            req = urllib.request.Request(url, headers=hdr, data=json.dumps(batch).encode('utf-8'))
-
-                            req.get_method = lambda: 'POST'
-                            response = urllib.request.urlopen(req)
-                            response_data = json.loads(response.read())
-                            combined_data.extend(response_data)
-                        # Convert data to csv table with uuid, latitude, longitude columns
-                        csv_data = "uuid,latitude,longitude\n"
-                        for item in combined_data:
-                            if isinstance(item, dict):
-                                uuid = item.get("uuid")
-                                latitude = item.get("latitude")
-                                longitude = item.get("longitude")
-                                csv_data += f"{uuid},{latitude},{longitude}\n"
-                        output_file = os.path.join(self.plugin_dir, "selected_uuids.csv")
-                        with open(output_file, "w") as f:
-                            f.write(csv_data)
+                        combined_data = bulk(output_file,['latitude','longitude'],selected_vintage,"locations")
+                        with open(output_file, mode="w", newline="") as file:
+                        # Get all keys from the first inner dictionary (assuming all dictionaries have the same structure)
+                            fieldnames = list(next(iter(combined_data.values())).keys())
+                            writer = csv.DictWriter(file, fieldnames=fieldnames)
+                            
+                            # Write the header
+                            writer.writeheader()
+                            
+                            # Write each inner dictionary as a row
+                            for inner_dict in combined_data.values():
+                                writer.writerow(inner_dict)
                         self.iface.messageBar().pushMessage("Success", f"uuid information exported to {output_file}", level=Qgis.Success)
                         
                         # Convert the CSV file to a shapefile
@@ -510,6 +513,55 @@ class CQAFabric:
             # substitute with your code.
             pass
     
+
+def bulk(uuidjson,fieldlist,selected_vintage,selected_layer):
+    # Create the URL for the API request
+    
+
+    hdr ={
+    # Request headers
+    'Content-Type': 'application/json',
+    'Cache-Control': 'no-cache',
+    'apikey': apikey,
+    }
+
+    # Request body
+    # Read the JSON file
+    with open(uuidjson, 'r') as f:
+        data = json.load(f)
+    batch_size = 1000  # Number of records to process at a time
+    total_records = len(data)
+    combined_data = []
+
+    field_size = 5
+    total_fields = len(fieldlist)
+    for start_1 in range(0, total_fields, field_size):
+        fieldlist_sub = fieldlist[start_1:start_1 + field_size]
+        url = f"https://costquest.azure-api.net/fabric/{selected_vintage}/bulk/{selected_layer}?field=" + ",".join(fieldlist_sub)
+
+        for start in range(0, total_records, batch_size):
+            # Get the current batch of records
+            batch = data[start:start + batch_size]
+
+            req = urllib.request.Request(url, headers=hdr, data=json.dumps(batch).encode('utf-8'))
+
+            req.get_method = lambda: 'POST'
+            response = urllib.request.urlopen(req)
+            response_data = json.loads(response.read())
+            combined_data.extend(response_data)
+        
+        # join the data by uuid
+        combined_data_dict = {}
+        for item in combined_data:
+            if isinstance(item, dict):
+                uuid = item.get("uuid")
+                if uuid not in combined_data_dict:
+                    combined_data_dict[uuid] = {}
+                combined_data_dict[uuid].update(item)
+
+    return combined_data_dict
+
+
 def collect(geojson,selected_vintage):
     global ids
     global collect_calls
