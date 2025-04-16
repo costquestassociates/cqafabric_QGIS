@@ -17,9 +17,9 @@
    <property name="geometry">
     <rect>
      <x>310</x>
-     <y>440</y>
+     <y>431</y>
      <width>341</width>
-     <height>32</height>
+     <height>41</height>
     </rect>
    </property>
    <property name="orientation">
@@ -150,9 +150,9 @@
    <property name="geometry">
     <rect>
      <x>550</x>
-     <y>40</y>
-     <width>91</width>
-     <height>23</height>
+     <y>32</y>
+     <width>101</width>
+     <height>31</height>
     </rect>
    </property>
    <property name="text">
@@ -164,7 +164,7 @@
     <rect>
      <x>30</x>
      <y>400</y>
-     <width>201</width>
+     <width>231</width>
      <height>17</height>
     </rect>
    </property>
@@ -177,7 +177,7 @@
     </font>
    </property>
    <property name="text">
-    <string>Add Fabric Locations  to Map?</string>
+    <string>Add Fabric Locations to Map?</string>
    </property>
    <property name="checked">
     <bool>false</bool>

@@ -331,7 +331,9 @@ class CQAFabric:
             # show the dialog
             self.dlg.show()
             layer = self.iface.activeLayer()
-            self.dlg.pushButton_ChgSelect.clicked.connect(lambda: self.iface.showAttributeTable(self.iface.activeLayer()) if layer is not None else self.iface.messageBar().pushMessage("Info", "Select a layer", level=Qgis.Info))
+            # Check if a layer is selected
+            if layer is not None:
+                self.dlg.pushButton_ChgSelect.clicked.connect(lambda: self.iface.showAttributeTable(self.iface.activeLayer()) if layer is not None else self.iface.messageBar().pushMessage("Info", "Select a layer", level=Qgis.Info))
 
             
             # Run the dialog event loop
@@ -429,7 +431,7 @@ class CQAFabric:
                 ids = list(set(ids))
                 uuidjson_file = os.path.join(self.plugin_dir, "selected_uuids.json")
                 # Create a new GeoJSON file with the UUIDs
-                with open(output_file, "w") as f:
+                with open(uuidjson_file, "w") as f:
                     json.dump(ids, f, indent=2)
                 self.iface.messageBar().pushMessage("Success", "found " + str(len(ids)) + " ids in " + str(int(endtime-starttime)) + "s", level=Qgis.Success)
 
@@ -443,7 +445,7 @@ class CQAFabric:
                 # Convert data to CSV file
                 csvoutput_file = os.path.join(self.plugin_dir, "selected_fabricdata.csv")
                 
-                with open(output_file, mode="w", newline="") as file:
+                with open(csvoutput_file, mode="w", newline="") as file:
                     
                 # Get all keys from the first inner dictionary (assuming all dictionaries have the same structure)
                     fieldnames = list(next(iter(combined_data.values())).keys())
