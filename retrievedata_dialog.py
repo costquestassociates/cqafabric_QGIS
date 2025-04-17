@@ -58,7 +58,7 @@ class RetrieveDataDialog(QtWidgets.QDialog, FORM_CLASS):
 
 
     def _initConnections(self):
-        self.mapVlayersCb.setFilters(QgsMapLayerProxyModel.VectorLayer)
+        self.mapVlayersCb.setFilters(QgsMapLayerProxyModel.VectorLayer.PolygonLayer)
         self.mapVlayersCb.setCurrentIndex(-1)  # TODO bringt nix :(
         self.mapVlayersCb.layerChanged.connect(self._layerChanged)
         self.mapVlayersCb.activated.connect(self._layerActivated)

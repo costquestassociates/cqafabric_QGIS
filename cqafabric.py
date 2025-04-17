@@ -334,87 +334,93 @@ class CQAFabric:
                     layer.selectAll()
                     selected_features = layer.selectedFeatures()
                     self.iface.messageBar().pushMessage("Info", "Use all features", level=Qgis.Info)
-                      
-                # Check if all selected features are polygons
-                for feature in selected_features:
-                    if feature.geometry().type() != QgsWkbTypes.PolygonGeometry:
-                        self.iface.messageBar().pushMessage("Error", "Not all selected features are polygons.", level=Qgis.Critical)
-                        return False
-                
-                # Create new layer based on selected features
-                # Create a new layer with the same geometry type as the original layer
-                new_layer=processing.run("native:saveselectedfeatures", {'INPUT':layer,'OUTPUT':'TEMPORARY_OUTPUT'})['OUTPUT']
-                dissolved = processing.run("native:dissolve", {'INPUT': new_layer,'FIELD':[],'SEPARATE_DISJOINT':False, 'OUTPUT': 'TEMPORARY_OUTPUT'})['OUTPUT']
-                dissolved_features = list(dissolved.getFeatures())
-                
-                # Use QgsJsonExporter to export selected features to GeoJSON    
-                exporter = QgsJsonExporter(dissolved)
-                exporter.setincludeattributes = False
-                exporter.setincludegeometry = True
-
-                geojson_str = exporter.exportFeatures(dissolved_features)  
-
-                if geojson_str is None:
-                    self.iface.messageBar().pushMessage("Error", "Failed to export features to GeoJSON.", level=Qgis.Critical)
-                    return False
-
-                try:
-                    # Save the GeoJSON to a file
-                    output_file = os.path.join(self.plugin_dir, "selected_features_temp.geojson")
-                    with open(output_file, "w") as f:
-                        f.write(geojson_str)
-
-                    input_file = output_file
-                    output_file = os.path.join(self.plugin_dir, "selected_features.geojson")
-                    
-                    # Load the GeoJSON file
-                    with open(input_file, "r") as f:
-                        geojson_data = json.load(f)
-
-                    # Extract only the geometry part
-                    geometries = [feature["geometry"] for feature in geojson_data.get("features", [])]
-
-                    if not geometries:
-                        self.iface.messageBar().pushMessage("Error", "No geometries found in the GeoJSON.", level=Qgis.Critical)
-                        return False
-
-                    # Save the geometries to a new JSON file
-                    with open(output_file, "w") as f:
-                        json.dump(geometries[0], f, indent=2)
-                    
-                    # Delete the original file
-                    #os.remove(input_file)
-
-                    self.iface.messageBar().pushMessage("Success", f"GeoJSON exported to {output_file}", level=Qgis.Success)
-                except Exception as e:
-                    self.iface.messageBar().pushMessage("Error", f"An error occurred: {str(e)}", level=Qgis.Critical)
-                    return False
-                
-                
                 
                 selected_vintage = self.dlg.comboBox_vintage.currentText()  # Get the selected vintage from the combo box vintage
                 selected_layer = self.dlg.comboBox_layer.currentText()  # Get the selected layer from the combo box layer
-                # string of geojson boundary to collect on
-                with open(output_file, "r") as file:
-                    geojson = file.read()
+                
 
-                    # recursive collect method
-                    starttime = time.time()
-                    collect_calls = 0
-                    divide_calls = 0
-                    ids = []
-                    collect(json.loads(geojson),selected_vintage)
-                    endtime = time.time()
+                if selected_layer == "locations":
+
+                    # Create new layer based on selected features
+                    # Create a new layer with the same geometry type as the original layer
+                    new_layer=processing.run("native:saveselectedfeatures", {'INPUT':layer,'OUTPUT':'TEMPORARY_OUTPUT'})['OUTPUT']
+                    dissolved = processing.run("native:dissolve", {'INPUT': new_layer,'FIELD':[],'SEPARATE_DISJOINT':False, 'OUTPUT': 'TEMPORARY_OUTPUT'})['OUTPUT']
+                    dissolved_features = list(dissolved.getFeatures())
+                    
+                    # Use QgsJsonExporter to export selected features to GeoJSON    
+                    exporter = QgsJsonExporter(dissolved)
+                    exporter.setincludeattributes = False
+                    exporter.setincludegeometry = True
+
+                    geojson_str = exporter.exportFeatures(dissolved_features)  
+
+                    if geojson_str is None:
+                        self.iface.messageBar().pushMessage("Error", "Failed to export features to GeoJSON.", level=Qgis.Critical)
+                        return False
+
+                    try:
+                        # Save the GeoJSON to a file
+                        output_file = os.path.join(self.plugin_dir, "selected_features_temp.geojson")
+                        with open(output_file, "w") as f:
+                            f.write(geojson_str)
+
+                        input_file = output_file
+                        output_file = os.path.join(self.plugin_dir, "selected_features.geojson")
                         
-                # there's a chance certain points are perfectly on borders of boundaries, account for rare chance of duplicates
-                ids = list(set(ids))
+                        # Load the GeoJSON file
+                        with open(input_file, "r") as f:
+                            geojson_data = json.load(f)
+
+                        # Extract only the geometry part
+                        geometries = [feature["geometry"] for feature in geojson_data.get("features", [])]
+
+                        if not geometries:
+                            self.iface.messageBar().pushMessage("Error", "No geometries found in the GeoJSON.", level=Qgis.Critical)
+                            return False
+
+                        # Save the geometries to a new JSON file
+                        with open(output_file, "w") as f:
+                            json.dump(geometries[0], f, indent=2)
+                        
+                        # Delete the original file
+                        #os.remove(input_file)
+
+                        self.iface.messageBar().pushMessage("Success", f"GeoJSON exported to {output_file}", level=Qgis.Success)
+                    except Exception as e:
+                        self.iface.messageBar().pushMessage("Error", f"An error occurred: {str(e)}", level=Qgis.Critical)
+                        return False
+                    
+                    # string of geojson boundary to collect on
+                    with open(output_file, "r") as file:
+                        geojson = file.read()
+
+                        # recursive collect method
+                        starttime = time.time()
+                        collect_calls = 0
+                        divide_calls = 0
+                        ids = []
+                        collect(json.loads(geojson),selected_vintage)
+                        endtime = time.time()
+                            
+                    # there's a chance certain points are perfectly on borders of boundaries, account for rare chance of duplicates
+                    ids = list(set(ids))
+                    os.remove(os.path.join(self.plugin_dir, "selected_features_temp.geojson"))
+                    os.remove(os.path.join(self.plugin_dir, "selected_features.geojson"))
+                
+                else:
+                    pass
+                
+                
+                
+                
+                # Create a new GeoJSON file with the UUIDs
                 uuidjson_file = os.path.join(self.plugin_dir, "selected_uuids.json")
                 # Create a new GeoJSON file with the UUIDs
                 with open(uuidjson_file, "w") as f:
                     json.dump(ids, f, indent=2)
                 self.iface.messageBar().pushMessage("Success", "found " + str(len(ids)) + " ids in " + str(int(endtime-starttime)) + "s", level=Qgis.Success)
 
-                #Get the list of fields from selectedFeaturesLw list widget
+                # Get the list of fields from selectedFeaturesLw list widget
                 selected_fields = []
                 for i in range(self.dlg.selectedFeaturesLw.count()):
                     item = self.dlg.selectedFeaturesLw.item(i)
