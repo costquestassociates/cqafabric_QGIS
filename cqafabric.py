@@ -252,28 +252,7 @@ class CQAFabric:
             # substitute with your code.
             selected_vintage = self.dlg.comboBox_vintage.currentText()  # Get the selected vintage from the combo box vintage
             selected_layer = self.dlg.comboBox_layer.currentText()  # Get the selected layer from the combo box layer
-            vector_tile_url = f"https://costquest.azure-api.net/fabric/{selected_vintage}/tiles/{selected_layer}/{{z}}/{{x}}/{{y}}"
-            styleUrl = f"https://cqazapihttp.blob.core.windows.net/$web/fabricstyles.json"
-            # Create a QgsDataSourceUri object
-            uri = QgsDataSourceUri()
-
-            # Set the required parameters
-            uri.setParam("styleUrl", styleUrl)  # Style URL
-            uri.setParam("type", "xyz")  # Style URL
-            uri.setParam("url", vector_tile_url)  # Base URL with placeholders
-            uri.setParam("zmax", "14")  # Maximum zoom level
-            if selected_layer == "locations":
-                uri.setParam("zmin", "0")  # Minimum zoom level
-            else:
-                uri.setParam("zmin", "12")
-            uri.setParam("http-header:apikey",apikey)  # API key for authentication
-            uri.setParam("http-header:Cache-Control", "no-cache")  # Cache control header
-
-            # Encode the URI
-            encoded_uri = uri.encodedUri().data().decode()
-            #self.iface.messageBar().pushMessage("Message", encoded_uri, level=Qgis.Info)
-            # Create the vector tile layer
-            vector_tile_layer = QgsVectorTileLayer(encoded_uri, f"Fabric {selected_vintage} - {selected_layer}")
+            vector_tile_layer=load_fabricvectortilelayer(selected_vintage,selected_layer,apikey)
             vector_tile_layer.loadDefaultStyle()
             # Check if the layer is valid
             if vector_tile_layer.isValid():
@@ -528,6 +507,30 @@ class CQAFabric:
             # substitute with your code.
             pass
     
+def load_fabricvectortilelayer(selected_vintage,selected_layer,apikey):
+    vector_tile_url = f"https://costquest.azure-api.net/fabric/{selected_vintage}/tiles/{selected_layer}/{{z}}/{{x}}/{{y}}"
+    styleUrl = f"https://cqazapihttp.blob.core.windows.net/$web/fabricstyles.json"
+    # Create a QgsDataSourceUri object
+    uri = QgsDataSourceUri()
+
+    # Set the required parameters
+    uri.setParam("styleUrl", styleUrl)  # Style URL
+    uri.setParam("type", "xyz")  # Style URL
+    uri.setParam("url", vector_tile_url)  # Base URL with placeholders
+    uri.setParam("zmax", "14")  # Maximum zoom level
+    if selected_layer == "locations":
+        uri.setParam("zmin", "0")  # Minimum zoom level
+    else:
+        uri.setParam("zmin", "12")
+    uri.setParam("http-header:apikey",apikey)  # API key for authentication
+    uri.setParam("http-header:Cache-Control", "no-cache")  # Cache control header
+
+    # Encode the URI
+    encoded_uri = uri.encodedUri().data().decode()
+    #self.iface.messageBar().pushMessage("Message", encoded_uri, level=Qgis.Info)
+    # Create the vector tile layer
+    vector_tile_layer = QgsVectorTileLayer(encoded_uri, f"Fabric {selected_vintage} - {selected_layer}")
+    return vector_tile_layer
 
 def bulk(uuidjson,fieldlist,selected_vintage,selected_layer):
     # Create the URL for the API request
