@@ -24,7 +24,7 @@
 from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication, Qt
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction, QToolButton, QMenu
-from qgis.core import QgsDataSourceUri, QgsVectorTileLayer, QgsProject, QgsVectorLayer, QgsWkbTypes, Qgis, QgsJsonExporter, QgsProcessingFeatureSourceDefinition, QgsFeatureRequest, QgsCoordinateReferenceSystem
+from qgis.core import QgsDataSourceUri, QgsVectorTileLayer, QgsProject, QgsVectorLayer, Qgis, QgsJsonExporter, QgsCoordinateReferenceSystem, QgsCoordinateTransform,QgsSelectionContext,QgsFeature
 import processing
 
 # Initialize Qt resources from file resources.py
@@ -326,25 +326,23 @@ class CQAFabric:
                 if self.dlg.checkBox_selection.isChecked(): # Use only selected features
                     selected_features = layer.selectedFeatures()
                     self.iface.messageBar().pushMessage("Info", "Use only selected features", level=Qgis.Info)
-                       
-                    if not selected_features:
-                        self.iface.messageBar().pushMessage("Info", "No features selected.", level=Qgis.Info)
-                        return False
                 else:   # Use all features
                     layer.selectAll()
                     selected_features = layer.selectedFeatures()
                     self.iface.messageBar().pushMessage("Info", "Use all features", level=Qgis.Info)
-                
+                if not selected_features:
+                        self.iface.messageBar().pushMessage("Info", "No features selected.", level=Qgis.Info)
+                        return False
                 selected_vintage = self.dlg.comboBox_vintage.currentText()  # Get the selected vintage from the combo box vintage
                 selected_layer = self.dlg.comboBox_layer.currentText()  # Get the selected layer from the combo box layer
-                
-
+                Define_Layer=processing.run("native:saveselectedfeatures", {'INPUT':layer,'OUTPUT':'TEMPORARY_OUTPUT'})['OUTPUT']
+                    
+                ids= []
                 if selected_layer == "locations":
 
                     # Create new layer based on selected features
                     # Create a new layer with the same geometry type as the original layer
-                    new_layer=processing.run("native:saveselectedfeatures", {'INPUT':layer,'OUTPUT':'TEMPORARY_OUTPUT'})['OUTPUT']
-                    dissolved = processing.run("native:dissolve", {'INPUT': new_layer,'FIELD':[],'SEPARATE_DISJOINT':False, 'OUTPUT': 'TEMPORARY_OUTPUT'})['OUTPUT']
+                    dissolved = processing.run("native:dissolve", {'INPUT': Define_Layer,'FIELD':[],'SEPARATE_DISJOINT':False, 'OUTPUT': 'TEMPORARY_OUTPUT'})['OUTPUT']
                     dissolved_features = list(dissolved.getFeatures())
                     
                     # Use QgsJsonExporter to export selected features to GeoJSON    
@@ -395,31 +393,98 @@ class CQAFabric:
                         geojson = file.read()
 
                         # recursive collect method
-                        starttime = time.time()
                         collect_calls = 0
                         divide_calls = 0
-                        ids = []
                         collect(json.loads(geojson),selected_vintage)
-                        endtime = time.time()
+                        
                             
                     # there's a chance certain points are perfectly on borders of boundaries, account for rare chance of duplicates
                     ids = list(set(ids))
                     os.remove(os.path.join(self.plugin_dir, "selected_features_temp.geojson"))
                     os.remove(os.path.join(self.plugin_dir, "selected_features.geojson"))
+
+                #when checkBox_addlocations botton is clicked
+                    if self.dlg.checkBox_addlocations.isChecked():
+                        try:    
+                                combined_data = bulk(uuidjson_file,['latitude','longitude'],selected_vintage,"locations")
+                                output_file = os.path.join(self.plugin_dir, "selected_locations.csv")
+                                with open(output_file, mode="w", newline="") as file:
+                                # Get all keys from the first inner dictionary (assuming all dictionaries have the same structure)
+                                    fieldnames = list(next(iter(combined_data.values())).keys())
+                                    writer = csv.DictWriter(file, fieldnames=fieldnames)
+                                    
+                                    # Write the header
+                                    writer.writeheader()
+                                    
+                                    # Write each inner dictionary as a row
+                                    for inner_dict in combined_data.values():
+                                        writer.writerow(inner_dict)
+                                self.iface.messageBar().pushMessage("Success", f"uuid information exported to {output_file}", level=Qgis.Success)
+                                
+                                # Convert the CSV file to a shapefile
+                                csv2shp = processing.run("native:createpointslayerfromtable", {
+                                    'INPUT': output_file,
+                                    'XFIELD': 'longitude',
+                                    'YFIELD': 'latitude',
+                                    'ZFIELD': '',
+                                    'MFIELD': '',
+                                    'TARGET_CRS': QgsCoordinateReferenceSystem('EPSG:4326'),
+                                    'OUTPUT': 'TEMPORARY_OUTPUT'
+                                })['OUTPUT']
+                                # Add the layer to the map
+                                joinshp=processing.run("native:joinattributestable", {'INPUT':csv2shp,'FIELD':'uuid','INPUT_2':csvoutput_file,'FIELD_2':'uuid','FIELDS_TO_COPY':[],'METHOD':1,'DISCARD_NONMATCHING':False,'PREFIX':'','OUTPUT':'TEMPORARY_OUTPUT'})['OUTPUT']
+                                QgsProject.instance().addMapLayer(joinshp)
+                            
+                        except Exception as e:
+                            self.iface.messageBar().pushMessage("Error", f"An error occurred: {str(e)}", level=Qgis.Critical)
+                            return False
                 
-                else:
-                    pass
+                else:   
+                    
+                    vector_tile_layer =load_fabricvectortilelayer(selected_vintage,selected_layer,apikey)
                 
-                
-                
-                
+                    
+                    feature_ids = [f.id() for f in Define_Layer.getFeatures()]  # Get all feature IDs
+                    
+                    for feature_id in feature_ids:
+                        Define_Layer.selectByIds([feature_id])
+                        box = Define_Layer.boundingBoxOfSelected()
+                        self.iface.mapCanvas().setExtent(box)
+                        self.iface.mapCanvas().refresh()
+                        geometry = Define_Layer.getGeometry(feature_id)
+                        context = QgsSelectionContext()
+                        canvas = self.iface.mapCanvas()
+                        context.setScale(canvas.scale())
+                        xform = QgsCoordinateTransform(Define_Layer.crs(), vector_tile_layer.crs(), QgsProject.instance())
+                        geometry.transform(xform)
+                        vector_tile_layer.selectByGeometry(geometry,context)
+                        if self.dlg.checkBox_addlocations.isChecked():
+                            layer = QgsVectorLayer("Polygon?crs="+vector_tile_layer.crs().authid()+"&field=uuid:string(255)", f"FabricSelection_{selected_layer} - {selected_vintage}", "memory")
+                            layer.startEditing()
+                            for feature in vector_tile_layer.selectedFeatures():
+                                newfeature = QgsFeature()
+                                tilegeom=feature.geometry()
+                                newfeature.setGeometry(tilegeom)
+                                uuid=feature.attributes()[0]
+                                newfeature.setAttributes([uuid])
+                                layer.dataProvider().addFeatures([newfeature])
+                                
+                                ids.append(uuid)
+                            layer.commitChanges()
+                            QgsProject.instance().addMapLayer(layer)
+                        else:
+                            for feature in vector_tile_layer.selectedFeatures(): 
+                                uuid=feature.attributes()[0]
+                                ids.append(uuid)
+                            
                 # Create a new GeoJSON file with the UUIDs
                 uuidjson_file = os.path.join(self.plugin_dir, "selected_uuids.json")
                 # Create a new GeoJSON file with the UUIDs
                 with open(uuidjson_file, "w") as f:
                     json.dump(ids, f, indent=2)
-                self.iface.messageBar().pushMessage("Success", "found " + str(len(ids)) + " ids in " + str(int(endtime-starttime)) + "s", level=Qgis.Success)
-
+                self.iface.messageBar().pushMessage("Success", "found " + str(len(ids)) + " ids", level=Qgis.Success)
+                
+                
                 # Get the list of fields from selectedFeaturesLw list widget
                 selected_fields = []
                 for i in range(self.dlg.selectedFeaturesLw.count()):
@@ -453,44 +518,9 @@ class CQAFabric:
                 # Create a new delimited text layer
                 delimited_layer = QgsVectorLayer(uri, "selected_fabricdata", "delimitedtext")
                 QgsProject.instance().addMapLayer(delimited_layer)
-
+                
             
-
-
-                #when checkBox_addlocations botton is clicked
-                if self.dlg.checkBox_addlocations.isChecked():
-                    try:
-                        combined_data = bulk(uuidjson_file,['latitude','longitude'],selected_vintage,"locations")
-                        output_file = os.path.join(self.plugin_dir, "selected_locations.csv")
-                        with open(output_file, mode="w", newline="") as file:
-                        # Get all keys from the first inner dictionary (assuming all dictionaries have the same structure)
-                            fieldnames = list(next(iter(combined_data.values())).keys())
-                            writer = csv.DictWriter(file, fieldnames=fieldnames)
-                            
-                            # Write the header
-                            writer.writeheader()
-                            
-                            # Write each inner dictionary as a row
-                            for inner_dict in combined_data.values():
-                                writer.writerow(inner_dict)
-                        self.iface.messageBar().pushMessage("Success", f"uuid information exported to {output_file}", level=Qgis.Success)
-                        
-                        # Convert the CSV file to a shapefile
-                        csv2shp = processing.run("native:createpointslayerfromtable", {
-                            'INPUT': output_file,
-                            'XFIELD': 'longitude',
-                            'YFIELD': 'latitude',
-                            'ZFIELD': '',
-                            'MFIELD': '',
-                            'TARGET_CRS': QgsCoordinateReferenceSystem('EPSG:4326'),
-                            'OUTPUT': 'TEMPORARY_OUTPUT'
-                        })['OUTPUT']
-                        # Add the layer to the map
-                        joinshp=processing.run("native:joinattributestable", {'INPUT':csv2shp,'FIELD':'uuid','INPUT_2':csvoutput_file,'FIELD_2':'uuid','FIELDS_TO_COPY':[],'METHOD':1,'DISCARD_NONMATCHING':False,'PREFIX':'','OUTPUT':'TEMPORARY_OUTPUT'})['OUTPUT']
-                        QgsProject.instance().addMapLayer(joinshp)
-                    except Exception as e:
-                        self.iface.messageBar().pushMessage("Error", f"An error occurred: {str(e)}", level=Qgis.Critical)
-                        return False
+                
                 
                     
     

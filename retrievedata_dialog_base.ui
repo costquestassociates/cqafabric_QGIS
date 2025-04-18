@@ -160,6 +160,9 @@
    </property>
   </widget>
   <widget class="QCheckBox" name="checkBox_addlocations">
+   <property name="enabled">
+    <bool>true</bool>
+   </property>
    <property name="geometry">
     <rect>
      <x>30</x>
@@ -177,7 +180,7 @@
     </font>
    </property>
    <property name="text">
-    <string>Add Fabric Locations to Map?</string>
+    <string>Add Fabric Geometry to Map?</string>
    </property>
    <property name="checked">
     <bool>false</bool>
