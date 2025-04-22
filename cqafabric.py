@@ -24,8 +24,10 @@
 from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication, Qt
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction, QToolButton, QMenu
-from qgis.core import QgsDataSourceUri, QgsVectorTileLayer, QgsProject, QgsVectorLayer, Qgis, QgsJsonExporter, QgsCoordinateReferenceSystem, QgsCoordinateTransform,QgsSelectionContext,QgsFeature
+from PyQt5.QtWidgets import QMessageBox, QScrollArea, QVBoxLayout, QLabel, QWidget
+from qgis.core import QgsDataSourceUri, QgsVectorTileLayer, QgsProject, QgsVectorLayer, Qgis, QgsJsonExporter, QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsSelectionContext, QgsFeature, QgsPointXY, QgsGeometry
 import processing
+from qgis.gui import QgsMapToolEmitPoint
 
 # Initialize Qt resources from file resources.py
 from .resources import *
@@ -33,12 +35,14 @@ from .resources import *
 from .cqafabric_dialog import CQAFabricDialog
 from .addfabrictiles_dialog import AddFabricTilesDialog
 from .retrievedata_dialog import RetrieveDataDialog
+from .identifydata_dialog import IdentifyDataDialog
 import os.path
 import urllib.request
 import json
 import requests
 import time
 import csv
+from qgis.PyQt.QtWidgets import QMessageBox
 apikey = "cq-4601df7497bb9ce596c5eb8f197b90a8"
 baseuri = "https://api.costquest.com/"
 collect_calls = 0
@@ -71,7 +75,7 @@ class CQAFabric:
 
         # Check if plugin was started the first time in current QGIS session
         # Must be set in initGui() to survive plugin reloads
-        self.first_start = None
+        # self.first_start = None
 
     # noinspection PyMethodMayBeStatic
     def tr(self, message):
@@ -166,7 +170,7 @@ class CQAFabric:
     def initGui(self):
         """Create the menu entries and toolbar icons inside the QGIS GUI."""
 
-        icon_path = ':/plugins/cqafabric/icon.png'
+        
         self.menu = self.iface.pluginMenu().addMenu(self.tr(
             "&CQA Fabric"))
         
@@ -179,20 +183,38 @@ class CQAFabric:
 
 
          # Create action for opening the Add Fabric Tiles window
-        icon = QIcon(icon_path)
-        self.actionAddFabricTiles = QAction(icon, self.tr("Add Fabric Tiles"))
+        icon_path_1 = ':/plugins/cqafabric/icon1.png'
+        icon1 = QIcon(icon_path_1)
+        self.actionAddFabricTiles = QAction(icon1, self.tr("Add Fabric Tiles"))
         self.menu.addAction(self.actionAddFabricTiles)
         toolButtonMenu.addAction(self.actionAddFabricTiles)
         self.actionAddFabricTiles.triggered.connect(self.AddFabricTiles)
 
         # Create action for opening the Retrieve data fields window
-        icon = QIcon(icon_path)
-        self.actionRetrieveData = QAction(icon, self.tr("Retrieve Fabric data"))
+        icon_path_2 = ':/plugins/cqafabric/icon2.png'
+        icon2 = QIcon(icon_path_2)
+        self.actionRetrieveData = QAction(icon2, self.tr("Retrieve Fabric data"))
         self.menu.addAction(self.actionRetrieveData)
         toolButtonMenu.addAction(self.actionRetrieveData)
         self.actionRetrieveData.triggered.connect(self.RetrieveData)
 
-        self.first_start = True
+        # Create action for getting coordinates from mouse click in QGIS3 in a plugin
+        icon_path_3 = ':/plugins/cqafabric/icon3.png'
+        icon3 = QIcon(icon_path_3)
+        self.actionIdentifyData = QAction(icon3, self.tr("Identify Fabric data"))
+        self.menu.addAction(self.actionIdentifyData)
+        toolButtonMenu.addAction(self.actionIdentifyData)
+        self.actionIdentifyData.triggered.connect(self.IdentifyData)
+
+        self.toolbar = self.iface.addToolBar(self.tr("&CQA Fabric"))
+        self.toolbar.setObjectName('CQA Fabric')
+
+        # Add actions to the toolbar
+        self.toolbar.addAction(self.actionAddFabricTiles)
+        self.toolbar.addAction(self.actionRetrieveData)
+        self.toolbar.addAction(self.actionIdentifyData)
+        
+        # self.first_start = True
 
 
     def unload(self):
@@ -203,29 +225,15 @@ class CQAFabric:
         self.iface.pluginMenu().removeAction(self.menu.menuAction())
         self.toolButton.deleteLater()
 
+        for action in self.actions:
+            self.iface.removePluginVectorMenu('&CQA Fabric', action)
+            self.iface.removeToolBarIcon(action)
+        del self.toolbar
+
     def AddFabricTiles(self):
         self.dlg = AddFabricTilesDialog()
-        try:
-            url = "https://costquest.azure-api.net/fabric/vintages"
-
-            hdr ={
-            # Request headers
-            'Cache-Control': 'no-cache',
-            'apikey': apikey,
-            }
-
-            req = urllib.request.Request(url, headers=hdr)
-
-            req.get_method = lambda: 'GET'
-            response = urllib.request.urlopen(req)
-            if response.getcode() == 200:
-                data = json.loads(response.read())
-                vintages = [item.get('vintage') for item in data if isinstance(item, dict)]
-                print("List of vintages:", vintages)
-            else:
-                print("Failed to fetch vintages. HTTP Code:", response.getcode())
-        except Exception as e:
-            print(e)
+        self.dlg.setWindowFlags(Qt.WindowStaysOnTopHint)
+        vintages=load_vintages(apikey)
 
         """
         # Get the current project and its layers
@@ -271,33 +279,9 @@ class CQAFabric:
             # Create the dialog with elements (after translation) and keep reference
             # Only create GUI ONCE in callback, so that it will only load when the plugin is started
             self.dlg = RetrieveDataDialog()
-            try:
-                url = "https://costquest.azure-api.net/fabric/vintages"
+            self.dlg.setWindowFlags(Qt.WindowStaysOnTopHint)
+            vintages=load_vintages(apikey)
 
-                hdr ={
-                # Request headers
-                'Cache-Control': 'no-cache',
-                'apikey': apikey,
-                }
-
-                req = urllib.request.Request(url, headers=hdr)
-
-                req.get_method = lambda: 'GET'
-                response = urllib.request.urlopen(req)
-                if response.getcode() == 200:
-                    data = json.loads(response.read())
-                    vintages = [item.get('vintage') for item in data if isinstance(item, dict)]
-                    print("List of vintages:", vintages)
-                else:
-                    print("Failed to fetch vintages. HTTP Code:", response.getcode())
-            except Exception as e:
-                print(e)
-
-            """
-            # Get the current project and its layers
-            layers = QgsProject.instance().mapLayers().values()
-            layer_list = [layer.name() for layer in layers]
-            """
             # Get the vintages from the API
             layer_list = vintages
             self.dlg.comboBox_vintage.clear()
@@ -358,12 +342,12 @@ class CQAFabric:
 
                     try:
                         # Save the GeoJSON to a file
-                        output_file = os.path.join(self.plugin_dir, "selected_features_temp.geojson")
+                        output_file = os.path.join(self.plugin_dir +"\outputs", "selected_features_temp.geojson")
                         with open(output_file, "w") as f:
                             f.write(geojson_str)
 
                         input_file = output_file
-                        output_file = os.path.join(self.plugin_dir, "selected_features.geojson")
+                        output_file = os.path.join(self.plugin_dir +"\outputs", "selected_features.geojson")
                         
                         # Load the GeoJSON file
                         with open(input_file, "r") as f:
@@ -400,14 +384,14 @@ class CQAFabric:
                             
                     # there's a chance certain points are perfectly on borders of boundaries, account for rare chance of duplicates
                     ids = list(set(ids))
-                    os.remove(os.path.join(self.plugin_dir, "selected_features_temp.geojson"))
-                    os.remove(os.path.join(self.plugin_dir, "selected_features.geojson"))
+                    os.remove(os.path.join(self.plugin_dir +"\outputs", "selected_features_temp.geojson"))
+                    os.remove(os.path.join(self.plugin_dir +"\outputs", "selected_features.geojson"))
 
                 #when checkBox_addlocations botton is clicked
                     if self.dlg.checkBox_addlocations.isChecked():
                         try:    
                                 combined_data = bulk(uuidjson_file,['latitude','longitude'],selected_vintage,"locations")
-                                output_file = os.path.join(self.plugin_dir, "selected_locations.csv")
+                                output_file = os.path.join(self.plugin_dir +"\outputs", "selected_locations.csv")
                                 with open(output_file, mode="w", newline="") as file:
                                 # Get all keys from the first inner dictionary (assuming all dictionaries have the same structure)
                                     fieldnames = list(next(iter(combined_data.values())).keys())
@@ -478,7 +462,7 @@ class CQAFabric:
                                 ids.append(uuid)
                             
                 # Create a new GeoJSON file with the UUIDs
-                uuidjson_file = os.path.join(self.plugin_dir, "selected_uuids.json")
+                uuidjson_file = os.path.join(self.plugin_dir +"\outputs", "selected_uuids.json")
                 # Create a new GeoJSON file with the UUIDs
                 with open(uuidjson_file, "w") as f:
                     json.dump(ids, f, indent=2)
@@ -493,7 +477,7 @@ class CQAFabric:
                
                 combined_data = bulk(uuidjson_file,selected_fields,selected_vintage,selected_layer)
                 # Convert data to CSV file
-                csvoutput_file = os.path.join(self.plugin_dir, "selected_fabricdata.csv")
+                csvoutput_file = os.path.join(self.plugin_dir +"\outputs", "selected_fabricdata.csv")
                 
                 with open(csvoutput_file, mode="w", newline="") as file:
                     
@@ -518,11 +502,102 @@ class CQAFabric:
                 # Create a new delimited text layer
                 delimited_layer = QgsVectorLayer(uri, "selected_fabricdata", "delimitedtext")
                 QgsProject.instance().addMapLayer(delimited_layer)
-                
-            
-                
+
+    def IdentifyData(self):   
+        """Create an action to get coordinates from mouse clicks."""
+        self.dlg = IdentifyDataDialog()  # Assuming you have a dialog for this action
+        self.dlg.setWindowFlags(Qt.WindowStaysOnTopHint)
+
+        # Get the vintages from the API
+        vintages=load_vintages(apikey)
+        layer_list = vintages
+        self.dlg.comboBox_vintage.clear()
+        self.dlg.comboBox_vintage.addItems(layer_list)
+
+        layer_list = ["locations", "footprints", "parcels"]
+        self.dlg.comboBox_layer.clear()
+        self.dlg.comboBox_layer.addItems(layer_list)
+
+       
+        
+        # Reference to the map canvas
+        canvas = self.iface.mapCanvas()
+
+        # Create a map tool to emit points on mouse click
+        self.pointTool = QgsMapToolEmitPoint(canvas)
+
+        # Connect the signal to a custom slot to handle the clicked point
+        self.pointTool.canvasClicked.connect(lambda point, button: self.display_point(
+            point, button, self.dlg.comboBox_vintage.currentText(), self.dlg.comboBox_layer.currentText()))
+
+        # Set the map tool to the canvas
+        canvas.setMapTool(self.pointTool)
+
+
+        # Show the dialog
+        self.dlg.show()
+
+        # if this action dialog is closed, remove the map tool
+        self.dlg.finished.connect(lambda: self.iface.mapCanvas().setMapTool(QgsMapToolEmitPoint(self.iface.mapCanvas())))
+        
+
+        
+
+
+    class ScrollMessageBox(QMessageBox):
+        def __init__(self, content_list, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            scroll = QScrollArea(self)
+            scroll.setWidgetResizable(True)
+            self.content = QWidget()
+            scroll.setWidget(self.content)
+            layout = QVBoxLayout(self.content)
+            for item in content_list:
+                layout.addWidget(QLabel(item, self))
+            self.layout().addWidget(scroll, 0, 0, 1, self.layout().columnCount())
+            self.setStyleSheet("QScrollArea{min-width:300px; min-height:400px}")
+
+    def display_point(self, point: QgsPointXY, button, selected_vintage, selected_layer):
+        """Handle the point emitted by the map tool."""
+        coords = "{}, {}".format(point.x(), point.y())
+        self.dlg.lineEdit.setText(str(coords))
+
+        vector_tile_layer = load_fabricvectortilelayer(selected_vintage, selected_layer, apikey)
+
+        geom = QgsGeometry.fromPointXY(QgsPointXY(point.x(), point.y()))
+        pt_geom = QgsGeometry().fromWkt(geom.asWkt())
+        xform = QgsCoordinateTransform(QgsCoordinateReferenceSystem('epsg:4326'), vector_tile_layer.crs(), QgsProject.instance())
+        pt_geom.transform(xform)
+
+        if selected_layer == "locations":
+            bb_geom = QgsGeometry().fromRect(pt_geom.buffer(3, 1).boundingBox())
+        else:
+            bb_geom = QgsGeometry().fromRect(pt_geom.buffer(0.001, 1).boundingBox())
+
+        canvas = self.iface.mapCanvas()
+        context = QgsSelectionContext()
+        context.setScale(canvas.scale())
+
+        vector_tile_layer.selectByGeometry(bb_geom, context)
+        ids = []
+        for feature in vector_tile_layer.selectedFeatures():
+            uuid = feature.attributes()[0]
+            ids.append(uuid)
+
+        # Display the UUIDs in a scrollable message box
+        if ids:
+            for uuid in ids:
+                data = individualdata(selected_vintage, selected_layer, apikey, uuid)
+                # Format the data as a list of strings for the scrollable message box
+                content_list = [f"<tr><td><b>{key}:<b></td><td>{value}</td></tr>" for key, value in data.items()]
+                result = self.ScrollMessageBox(content_list, self.dlg)
+                result.setWindowTitle(f"Fabric {selected_layer} - {selected_vintage}")
+                result.exec_()
+        else:
+            self.iface.messageBar().pushMessage("Info", "No features found at the clicked location.", level=Qgis.Info)
                 
                     
+                        
     
     def run(self):
         """Run method that performs all the real work"""
@@ -542,7 +617,25 @@ class CQAFabric:
             # Do something useful here - delete the line containing pass and
             # substitute with your code.
             pass
-    
+
+def load_vintages(apikey):
+    url = "https://costquest.azure-api.net/fabric/vintages"
+
+    hdr ={
+    # Request headers
+    'Cache-Control': 'no-cache',
+    'apikey': apikey,
+    }
+    req = urllib.request.Request(url, headers=hdr)
+    req.get_method = lambda: 'GET'
+    response = urllib.request.urlopen(req)
+    if response.getcode() == 200:
+        data = json.loads(response.read())
+        vintages = [item.get('vintage') for item in data if isinstance(item, dict)]
+        return vintages
+    else:
+        print("Failed to fetch vintages. HTTP Code:", response.getcode())
+
 def load_fabricvectortilelayer(selected_vintage,selected_layer,apikey):
     vector_tile_url = f"https://costquest.azure-api.net/fabric/{selected_vintage}/tiles/{selected_layer}/{{z}}/{{x}}/{{y}}"
     styleUrl = f"https://cqazapihttp.blob.core.windows.net/$web/fabricstyles.json"
@@ -631,3 +724,22 @@ def collect(geojson,selected_vintage):
     else:
         print("adding " + str(len(collect_ids)) + " ids")
         ids = ids + collect_ids
+
+def individualdata(selected_vintage,selected_layer,apikey,uuid):
+    url = f"https://costquest.azure-api.net/fabric/{selected_vintage}/data/{selected_layer}?uuid={uuid}"
+
+    hdr ={
+    # Request headers
+    'Cache-Control': 'no-cache',
+    'apikey': apikey,
+    }
+
+    req = urllib.request.Request(url, headers=hdr)
+
+    req.get_method = lambda: 'GET'
+    response = urllib.request.urlopen(req)
+    if response.getcode() == 200:
+        data = json.loads(response.read())
+        return data
+    else:
+        print("Failed to fetch vintages. HTTP Code:", response.getcode())
