@@ -589,9 +589,11 @@ class CQAFabric:
             for uuid in ids:
                 data = individualdata(selected_vintage, selected_layer, apikey, uuid)
                 # Format the data as a list of strings for the scrollable message box
-                content_list = [f"<tr><td><b>{key}:<b></td><td>{value}</td></tr>" for key, value in data.items()]
-                result = self.ScrollMessageBox(content_list, self.dlg)
+                content_list = [f"<tr><td style='border: 1px solid black;'><b>{key}</b></td><td style='border: 1px solid black;'>{value}</td></tr>" for key, value in data.items()]
+                html_content = f"<table style='border-collapse: collapse;'>{''.join(content_list)}</table>"
+                result = self.ScrollMessageBox([html_content], self.dlg)
                 result.setWindowTitle(f"Fabric {selected_layer} - {selected_vintage}")
+                result.setStyleSheet("QScrollArea{min-width:500px; min-height:400px}")  # Adjusted width
                 result.exec_()
         else:
             self.iface.messageBar().pushMessage("Info", "No features found at the clicked location.", level=Qgis.Info)
