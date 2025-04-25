@@ -24,7 +24,7 @@
 from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication, Qt
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction, QToolButton, QMenu
-from PyQt5.QtWidgets import QMessageBox, QScrollArea, QVBoxLayout, QLabel, QWidget
+from PyQt5.QtWidgets import QMessageBox, QScrollArea, QVBoxLayout, QLabel, QWidget, QPushButton, QLineEdit
 from qgis.core import QgsDataSourceUri, QgsVectorTileLayer, QgsProject, QgsVectorLayer, Qgis, QgsJsonExporter, QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsSelectionContext, QgsFeature, QgsPointXY, QgsGeometry
 import processing
 from qgis.gui import QgsMapToolEmitPoint
@@ -43,7 +43,7 @@ import requests
 import time
 import csv
 from qgis.PyQt.QtWidgets import QMessageBox
-apikey = "cq-4601df7497bb9ce596c5eb8f197b90a8"
+#apikey = "cq-4601df7497bb9ce596c5eb8f197b90a8"
 baseuri = "https://api.costquest.com/"
 collect_calls = 0
 divide_calls = 0
@@ -214,7 +214,42 @@ class CQAFabric:
         self.toolbar.addAction(self.actionRetrieveData)
         self.toolbar.addAction(self.actionIdentifyData)
         
-        # self.first_start = True
+        self.first_start = True
+
+        # Add authentication window for user to input credentials
+        self.auth_dialog = CQAFabricDialog()
+        self.auth_dialog.setWindowTitle("Authentication")
+        self.auth_dialog.setWindowFlags(Qt.WindowStaysOnTopHint)
+
+        # Add input fields for API key
+        self.auth_dialog.label_api_key = QLabel("API Key:")
+        self.auth_dialog.lineEdit_api_key = QLineEdit()
+        self.auth_dialog.lineEdit_api_key.setEchoMode(QLineEdit.Password)
+
+        # Add a button to save the API key
+        self.auth_dialog.button_save = QPushButton("Save")
+        self.auth_dialog.button_save.clicked.connect(self.save_api_key)
+
+        # Layout for the authentication dialog
+        layout = QVBoxLayout()
+        layout.addWidget(self.auth_dialog.label_api_key)
+        layout.addWidget(self.auth_dialog.lineEdit_api_key)
+        layout.addWidget(self.auth_dialog.button_save)
+        self.auth_dialog.setLayout(layout)
+
+        # Show the authentication dialog
+        self.auth_dialog.show()
+
+    def save_api_key(self):
+            """Save the API key entered by the user."""
+            global apikey
+            apikey = self.auth_dialog.lineEdit_api_key.text()
+            if verify_apikey(apikey):
+                self.auth_dialog.close()
+                self.iface.messageBar().pushMessage("Success", "API key saved successfully.", level=Qgis.Success)
+            else:
+                self.iface.messageBar().pushMessage("Error", "API key cannot be verified.", level=Qgis.Critical)
+                self.auth_dialog.show()
 
 
     def unload(self):
@@ -321,74 +356,51 @@ class CQAFabric:
                 selected_layer = self.dlg.comboBox_layer.currentText()  # Get the selected layer from the combo box layer
                 Define_Layer=processing.run("native:saveselectedfeatures", {'INPUT':layer,'OUTPUT':'TEMPORARY_OUTPUT'})['OUTPUT']
                     
-                ids= []
-                if selected_layer == "locations":
-
-                    # Create new layer based on selected features
-                    # Create a new layer with the same geometry type as the original layer
-                    dissolved = processing.run("native:dissolve", {'INPUT': Define_Layer,'FIELD':[],'SEPARATE_DISJOINT':False, 'OUTPUT': 'TEMPORARY_OUTPUT'})['OUTPUT']
-                    dissolved_features = list(dissolved.getFeatures())
+                ids= []  
                     
-                    # Use QgsJsonExporter to export selected features to GeoJSON    
-                    exporter = QgsJsonExporter(dissolved)
-                    exporter.setincludeattributes = False
-                    exporter.setincludegeometry = True
-
-                    geojson_str = exporter.exportFeatures(dissolved_features)  
-
-                    if geojson_str is None:
-                        self.iface.messageBar().pushMessage("Error", "Failed to export features to GeoJSON.", level=Qgis.Critical)
-                        return False
-
-                    try:
-                        # Save the GeoJSON to a file
-                        output_file = os.path.join(self.plugin_dir +"\outputs", "selected_features_temp.geojson")
-                        with open(output_file, "w") as f:
-                            f.write(geojson_str)
-
-                        input_file = output_file
-                        output_file = os.path.join(self.plugin_dir +"\outputs", "selected_features.geojson")
-                        
-                        # Load the GeoJSON file
-                        with open(input_file, "r") as f:
-                            geojson_data = json.load(f)
-
-                        # Extract only the geometry part
-                        geometries = [feature["geometry"] for feature in geojson_data.get("features", [])]
-
-                        if not geometries:
-                            self.iface.messageBar().pushMessage("Error", "No geometries found in the GeoJSON.", level=Qgis.Critical)
-                            return False
-
-                        # Save the geometries to a new JSON file
-                        with open(output_file, "w") as f:
-                            json.dump(geometries[0], f, indent=2)
-                        
-                        # Delete the original file
-                        #os.remove(input_file)
-
-                        self.iface.messageBar().pushMessage("Success", f"GeoJSON exported to {output_file}", level=Qgis.Success)
-                    except Exception as e:
-                        self.iface.messageBar().pushMessage("Error", f"An error occurred: {str(e)}", level=Qgis.Critical)
-                        return False
-                    
-                    # string of geojson boundary to collect on
-                    with open(output_file, "r") as file:
-                        geojson = file.read()
-
-                        # recursive collect method
-                        collect_calls = 0
-                        divide_calls = 0
-                        collect(json.loads(geojson),selected_vintage)
-                        
+                vector_tile_layer =load_fabricvectortilelayer(selected_vintage,selected_layer,apikey)
+            
+                
+                feature_ids = [f.id() for f in Define_Layer.getFeatures()]  # Get all feature IDs
+                
+                for feature_id in feature_ids:
+                    Define_Layer.selectByIds([feature_id])
+                    box = Define_Layer.boundingBoxOfSelected()
+                    self.iface.mapCanvas().setExtent(box)
+                    self.iface.mapCanvas().refresh()
+                    geometry = Define_Layer.getGeometry(feature_id)
+                    context = QgsSelectionContext()
+                    canvas = self.iface.mapCanvas()
+                    context.setScale(canvas.scale())
+                    xform = QgsCoordinateTransform(Define_Layer.crs(), vector_tile_layer.crs(), QgsProject.instance())
+                    geometry.transform(xform)
+                    vector_tile_layer.selectByGeometry(geometry,context)
+                    if self.dlg.checkBox_addlocations.isChecked() and selected_layer != "locations":
+                        layer = QgsVectorLayer("Polygon?crs="+vector_tile_layer.crs().authid()+"&field=uuid:string(255)", f"FabricSelection_{selected_layer} - {selected_vintage}", "memory")
+                        layer.startEditing()
+                        for feature in vector_tile_layer.selectedFeatures():
+                            newfeature = QgsFeature()
+                            tilegeom=feature.geometry()
+                            newfeature.setGeometry(tilegeom)
+                            uuid=feature.attributes()[0]
+                            newfeature.setAttributes([uuid])
+                            layer.dataProvider().addFeatures([newfeature])
                             
-                    # there's a chance certain points are perfectly on borders of boundaries, account for rare chance of duplicates
-                    ids = list(set(ids))
-                    os.remove(os.path.join(self.plugin_dir +"\outputs", "selected_features_temp.geojson"))
-                    os.remove(os.path.join(self.plugin_dir +"\outputs", "selected_features.geojson"))
-
-                #when checkBox_addlocations botton is clicked
-                    if self.dlg.checkBox_addlocations.isChecked():
+                            ids.append(uuid)
+                        layer.commitChanges()
+                    else:
+                        for feature in vector_tile_layer.selectedFeatures(): 
+                            uuid=feature.attributes()[0]
+                            ids.append(uuid)
+                            
+                    # Create a new GeoJSON file with the UUIDs
+                    uuidjson_file = os.path.join(self.plugin_dir +"\outputs", "selected_uuids.json")
+                    # Create a new GeoJSON file with the UUIDs
+                    with open(uuidjson_file, "w") as f:
+                        json.dump(ids, f, indent=2)
+                    self.iface.messageBar().pushMessage("Success", "found " + str(len(ids)) + " ids", level=Qgis.Success)
+                    
+                    if self.dlg.checkBox_addlocations.isChecked() and selected_layer == "locations":
                         try:    
                                 combined_data = bulk(uuidjson_file,['latitude','longitude'],selected_vintage,"locations")
                                 output_file = os.path.join(self.plugin_dir +"\outputs", "selected_locations.csv")
@@ -406,7 +418,7 @@ class CQAFabric:
                                 self.iface.messageBar().pushMessage("Success", f"uuid information exported to {output_file}", level=Qgis.Success)
                                 
                                 # Convert the CSV file to a shapefile
-                                csv2shp = processing.run("native:createpointslayerfromtable", {
+                                layer = processing.run("native:createpointslayerfromtable", {
                                     'INPUT': output_file,
                                     'XFIELD': 'longitude',
                                     'YFIELD': 'latitude',
@@ -415,60 +427,12 @@ class CQAFabric:
                                     'TARGET_CRS': QgsCoordinateReferenceSystem('EPSG:4326'),
                                     'OUTPUT': 'TEMPORARY_OUTPUT'
                                 })['OUTPUT']
-                                # Add the layer to the map
-                                joinshp=processing.run("native:joinattributestable", {'INPUT':csv2shp,'FIELD':'uuid','INPUT_2':csvoutput_file,'FIELD_2':'uuid','FIELDS_TO_COPY':[],'METHOD':1,'DISCARD_NONMATCHING':False,'PREFIX':'','OUTPUT':'TEMPORARY_OUTPUT'})['OUTPUT']
-                                QgsProject.instance().addMapLayer(joinshp)
+
                             
                         except Exception as e:
                             self.iface.messageBar().pushMessage("Error", f"An error occurred: {str(e)}", level=Qgis.Critical)
                             return False
-                
-                else:   
-                    
-                    vector_tile_layer =load_fabricvectortilelayer(selected_vintage,selected_layer,apikey)
-                
-                    
-                    feature_ids = [f.id() for f in Define_Layer.getFeatures()]  # Get all feature IDs
-                    
-                    for feature_id in feature_ids:
-                        Define_Layer.selectByIds([feature_id])
-                        box = Define_Layer.boundingBoxOfSelected()
-                        self.iface.mapCanvas().setExtent(box)
-                        self.iface.mapCanvas().refresh()
-                        geometry = Define_Layer.getGeometry(feature_id)
-                        context = QgsSelectionContext()
-                        canvas = self.iface.mapCanvas()
-                        context.setScale(canvas.scale())
-                        xform = QgsCoordinateTransform(Define_Layer.crs(), vector_tile_layer.crs(), QgsProject.instance())
-                        geometry.transform(xform)
-                        vector_tile_layer.selectByGeometry(geometry,context)
-                        if self.dlg.checkBox_addlocations.isChecked():
-                            layer = QgsVectorLayer("Polygon?crs="+vector_tile_layer.crs().authid()+"&field=uuid:string(255)", f"FabricSelection_{selected_layer} - {selected_vintage}", "memory")
-                            layer.startEditing()
-                            for feature in vector_tile_layer.selectedFeatures():
-                                newfeature = QgsFeature()
-                                tilegeom=feature.geometry()
-                                newfeature.setGeometry(tilegeom)
-                                uuid=feature.attributes()[0]
-                                newfeature.setAttributes([uuid])
-                                layer.dataProvider().addFeatures([newfeature])
-                                
-                                ids.append(uuid)
-                            layer.commitChanges()
-                            QgsProject.instance().addMapLayer(layer)
-                        else:
-                            for feature in vector_tile_layer.selectedFeatures(): 
-                                uuid=feature.attributes()[0]
-                                ids.append(uuid)
-                            
-                # Create a new GeoJSON file with the UUIDs
-                uuidjson_file = os.path.join(self.plugin_dir +"\outputs", "selected_uuids.json")
-                # Create a new GeoJSON file with the UUIDs
-                with open(uuidjson_file, "w") as f:
-                    json.dump(ids, f, indent=2)
-                self.iface.messageBar().pushMessage("Success", "found " + str(len(ids)) + " ids", level=Qgis.Success)
-                
-                
+                        
                 # Get the list of fields from selectedFeaturesLw list widget
                 selected_fields = []
                 for i in range(self.dlg.selectedFeaturesLw.count()):
@@ -502,6 +466,10 @@ class CQAFabric:
                 # Create a new delimited text layer
                 delimited_layer = QgsVectorLayer(uri, "selected_fabricdata", "delimitedtext")
                 QgsProject.instance().addMapLayer(delimited_layer)
+                
+                if self.dlg.checkBox_addlocations.isChecked():
+                    joinshp=processing.run("native:joinattributestable", {'INPUT':layer,'FIELD':'uuid','INPUT_2':csvoutput_file,'FIELD_2':'uuid','FIELDS_TO_COPY':[],'METHOD':1,'DISCARD_NONMATCHING':False,'PREFIX':'','OUTPUT':'TEMPORARY_OUTPUT'})['OUTPUT']
+                    QgsProject.instance().addMapLayer(joinshp)
 
     def IdentifyData(self):   
         """Create an action to get coordinates from mouse clicks."""
@@ -541,8 +509,6 @@ class CQAFabric:
         self.dlg.finished.connect(lambda: self.iface.mapCanvas().setMapTool(QgsMapToolEmitPoint(self.iface.mapCanvas())))
         
 
-        
-
 
     class ScrollMessageBox(QMessageBox):
         def __init__(self, content_list, *args, **kwargs):
@@ -555,7 +521,7 @@ class CQAFabric:
             for item in content_list:
                 layout.addWidget(QLabel(item, self))
             self.layout().addWidget(scroll, 0, 0, 1, self.layout().columnCount())
-            self.setStyleSheet("QScrollArea{min-width:300px; min-height:400px}")
+            self.setStyleSheet("QScrollArea{min-width:500px; min-height:400px}")
 
     def display_point(self, point: QgsPointXY, button, selected_vintage, selected_layer):
         """Handle the point emitted by the map tool."""
@@ -574,6 +540,10 @@ class CQAFabric:
         else:
             bb_geom = QgsGeometry().fromRect(pt_geom.buffer(0.001, 1).boundingBox())
 
+        # Add the bb_geom to the map canvas as temporary layer
+        # Create a new memory layer for the bounding box
+        
+
         canvas = self.iface.mapCanvas()
         context = QgsSelectionContext()
         context.setScale(canvas.scale())
@@ -583,8 +553,23 @@ class CQAFabric:
         for feature in vector_tile_layer.selectedFeatures():
             uuid = feature.attributes()[0]
             ids.append(uuid)
-
-        # Display the UUIDs in a scrollable message box
+        """
+        bb_layer = QgsVectorLayer("Polygon?crs=" + vector_tile_layer.crs().authid(), "Identified feature", "memory")
+        bb_layer.startEditing()
+        for feature in vector_tile_layer.selectedFeatures():
+                                newfeature = QgsFeature()
+                                tilegeom=feature.geometry()
+                                if selected_layer == "locations":
+                                    newfeature.setGeometry(tilegeom.buffer(1, 1))
+                                else:
+                                    newfeature.setGeometry(tilegeom)
+                                uuid=feature.attributes()[0]
+                                newfeature.setAttributes([uuid])
+                                bb_layer.dataProvider().addFeatures([newfeature])
+        bb_layer.commitChanges()
+        QgsProject.instance().addMapLayer(bb_layer)
+        """     
+        # Display the data in a scrollable message box
         if ids:
             for uuid in ids:
                 data = individualdata(selected_vintage, selected_layer, apikey, uuid)
@@ -593,8 +578,11 @@ class CQAFabric:
                 html_content = f"<table style='border-collapse: collapse;'>{''.join(content_list)}</table>"
                 result = self.ScrollMessageBox([html_content], self.dlg)
                 result.setWindowTitle(f"Fabric {selected_layer} - {selected_vintage}")
-                result.setStyleSheet("QScrollArea{min-width:500px; min-height:400px}")  # Adjusted width
                 result.exec_()
+
+
+
+
         else:
             self.iface.messageBar().pushMessage("Info", "No features found at the clicked location.", level=Qgis.Info)
                 
@@ -619,6 +607,25 @@ class CQAFabric:
             # Do something useful here - delete the line containing pass and
             # substitute with your code.
             pass
+
+def verify_apikey(apikey):
+    url = "https://api.costquest.com/accountcontrol/listkeys"
+
+    hdr ={
+    # Request headers
+    'Cache-Control': 'no-cache',
+    'apikey': apikey,
+    }
+    try:
+        req = urllib.request.Request(url, headers=hdr)
+        req.get_method = lambda: 'GET'
+        response = urllib.request.urlopen(req)
+        if response.getcode() == 200:
+            return True
+        else:
+            return False
+    except Exception as e:
+        return False
 
 def load_vintages(apikey):
     url = "https://costquest.azure-api.net/fabric/vintages"
