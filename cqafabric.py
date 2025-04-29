@@ -218,8 +218,14 @@ class CQAFabric:
 
         # Add authentication window for user to input credentials
         self.auth_dialog = CQAFabricDialog()
-        self.auth_dialog.setWindowTitle("Authentication")
+        self.auth_dialog.setWindowTitle("CQA Fabric Authentication")
         self.auth_dialog.setWindowFlags(Qt.WindowStaysOnTopHint)
+        # Set the size of the dialog
+        self.auth_dialog.resize(350, 100)
+        # Set the dialog to be modal
+        self.auth_dialog.setModal(True)
+        # Set the dialog to be non-resizable
+        self.auth_dialog.setFixedSize(self.auth_dialog.size())
 
         # Add input fields for API key
         self.auth_dialog.label_api_key = QLabel("API Key:")
@@ -236,15 +242,28 @@ class CQAFabric:
         layout.addWidget(self.auth_dialog.lineEdit_api_key)
         layout.addWidget(self.auth_dialog.button_save)
         self.auth_dialog.setLayout(layout)
-
+        # Get the current windows user name
+        user_name = os.getlogin()
+        # Check whether the API file already exists 
+        global apikey_file
+        apikey_file = os.path.join(r"C:\Users",user_name, 'AppData\Roaming\QGIS', 'QGIS_CQAFabric.config')
+        if os.path.exists(apikey_file):
+            # Read the API key from the file
+            with open(apikey_file, 'r') as f:
+                global apikey
+                apikey = f.read().strip()
+        else:
         # Show the authentication dialog
-        self.auth_dialog.show()
+            self.auth_dialog.show()
 
     def save_api_key(self):
             """Save the API key entered by the user."""
             global apikey
             apikey = self.auth_dialog.lineEdit_api_key.text()
             if verify_apikey(apikey):
+                with open(apikey_file, 'w') as f:
+                    f.write(apikey)
+                # Close the authentication dialog
                 self.auth_dialog.close()
                 self.iface.messageBar().pushMessage("Success", "API key saved successfully.", level=Qgis.Success)
             else:
