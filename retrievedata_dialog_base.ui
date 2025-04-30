@@ -2,6 +2,9 @@
 <ui version="4.0">
  <class>Dialog</class>
  <widget class="QDialog" name="Dialog">
+  <property name="enabled">
+   <bool>true</bool>
+  </property>
   <property name="geometry">
    <rect>
     <x>0</x>
@@ -328,6 +331,35 @@
      </layout>
     </item>
    </layout>
+  </widget>
+  <widget class="QPushButton" name="pushButton_AddTiles_M">
+   <property name="geometry">
+    <rect>
+     <x>340</x>
+     <y>100</y>
+     <width>131</width>
+     <height>31</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Add Vector Tiles to Map</string>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="pushButton_AddTiles_S">
+   <property name="enabled">
+    <bool>true</bool>
+   </property>
+   <property name="geometry">
+    <rect>
+     <x>490</x>
+     <y>100</y>
+     <width>161</width>
+     <height>31</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Add Vector Tiles to Source</string>
+   </property>
   </widget>
  </widget>
  <customwidgets>

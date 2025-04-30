@@ -25,7 +25,7 @@ from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication, Qt
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction, QToolButton, QMenu
 from PyQt5.QtWidgets import QMessageBox, QScrollArea, QVBoxLayout, QLabel, QWidget, QPushButton, QLineEdit
-from qgis.core import QgsDataSourceUri, QgsVectorTileLayer, QgsProject, QgsVectorLayer, Qgis, QgsJsonExporter, QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsSelectionContext, QgsFeature, QgsPointXY, QgsGeometry
+from qgis.core import QgsDataSourceUri, QgsVectorTileLayer, QgsProject, QgsVectorLayer, Qgis, QgsJsonExporter, QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsSelectionContext, QgsFeature, QgsPointXY, QgsGeometry, QgsSettings
 import processing
 from qgis.gui import QgsMapToolEmitPoint
 
@@ -182,14 +182,14 @@ class CQAFabric:
         toolButtonMenu = self.toolButton.menu()
 
 
-         # Create action for opening the Add Fabric Tiles window
+        '''# Create action for opening the Add Fabric Tiles window
         icon_path_1 = ':/plugins/cqafabric/icon1.png'
         icon1 = QIcon(icon_path_1)
         self.actionAddFabricTiles = QAction(icon1, self.tr("Add Fabric Tiles"))
         self.menu.addAction(self.actionAddFabricTiles)
         toolButtonMenu.addAction(self.actionAddFabricTiles)
         self.actionAddFabricTiles.triggered.connect(self.AddFabricTiles)
-
+        '''
         # Create action for opening the Retrieve data fields window
         icon_path_2 = ':/plugins/cqafabric/icon2.png'
         icon2 = QIcon(icon_path_2)
@@ -210,7 +210,7 @@ class CQAFabric:
         self.toolbar.setObjectName('CQA Fabric')
 
         # Add actions to the toolbar
-        self.toolbar.addAction(self.actionAddFabricTiles)
+        #self.toolbar.addAction(self.actionAddFabricTiles)
         self.toolbar.addAction(self.actionRetrieveData)
         self.toolbar.addAction(self.actionIdentifyData)
         
@@ -310,19 +310,7 @@ class CQAFabric:
         result = self.dlg.exec_()
         # See if OK was pressed
         if result:
-            # Do something useful here - delete the line containing pass and
-            # substitute with your code.
-            selected_vintage = self.dlg.comboBox_vintage.currentText()  # Get the selected vintage from the combo box vintage
-            selected_layer = self.dlg.comboBox_layer.currentText()  # Get the selected layer from the combo box layer
-            vector_tile_layer=load_fabricvectortilelayer(selected_vintage,selected_layer,apikey)
-            vector_tile_layer.loadDefaultStyle()
-            # Check if the layer is valid
-            if vector_tile_layer.isValid():
-                # Add the layer to the map
-                QgsProject.instance().addMapLayer(vector_tile_layer)
-            else:
-                # Handle the case when the layer is not valid
-                self.iface.messageBar().pushMessage("Error", "Failed to load vector tile layer.", level=Qgis.Critical)
+            self.add_fabrictiles()
 
     def RetrieveData(self):
             global ids
@@ -333,7 +321,7 @@ class CQAFabric:
             # Create the dialog with elements (after translation) and keep reference
             # Only create GUI ONCE in callback, so that it will only load when the plugin is started
             self.dlg = RetrieveDataDialog()
-            self.dlg.setWindowFlags(Qt.WindowStaysOnTopHint)
+            #self.dlg.setWindowFlags(Qt.WindowStaysOnTopHint)
             vintages=load_vintages(apikey)
 
             # Get the vintages from the API
@@ -351,8 +339,15 @@ class CQAFabric:
             # Check if a layer is selected
             if layer is not None:
                 self.dlg.pushButton_ChgSelect.clicked.connect(lambda: self.iface.showAttributeTable(self.iface.activeLayer()) if layer is not None else self.iface.messageBar().pushMessage("Info", "Select a layer", level=Qgis.Info))
+            # if pushButton_AddTiles is clicked, add tiles to the map
+            self.dlg.pushButton_AddTiles_M.clicked.connect(lambda: self.add_fabrictiles())
 
-            
+            # if pushButton_AddTiles is clicked, add tiles to the map
+            self.dlg.pushButton_AddTiles_S.clicked.connect(lambda: self.add_fabrictilessource())
+
+
+
+
             # Run the dialog event loop
             result = self.dlg.exec_()
             # See if OK was pressed
@@ -626,6 +621,58 @@ class CQAFabric:
             # Do something useful here - delete the line containing pass and
             # substitute with your code.
             pass
+
+    def add_fabrictiles(self):
+        selected_vintage = self.dlg.comboBox_vintage.currentText()  # Get the selected vintage from the combo box vintage
+        selected_layer = self.dlg.comboBox_layer.currentText()  # Get the selected layer from the combo box layer
+        vector_tile_layer=load_fabricvectortilelayer(selected_vintage,selected_layer,apikey)
+        vector_tile_layer.loadDefaultStyle()
+        # Check if the layer is valid
+        if vector_tile_layer.isValid():
+            # Add the layer to the map
+            QgsProject.instance().addMapLayer(vector_tile_layer)
+        else:
+            # Handle the case when the layer is not valid
+            self.iface.messageBar().pushMessage("Error", "Failed to load vector tile layer.", level=Qgis.Critical)
+
+    def remove_fabrictiles(self,name):
+        # Remove the layer from the map
+        layers = QgsProject.instance().mapLayers().values()
+        for layer in layers:
+            if layer.name() == name:
+                QgsProject.instance().removeMapLayer(layer.id())
+                break
+    
+    def add_fabrictilessource(self):
+        selected_vintage = self.dlg.comboBox_vintage.currentText()  # Get the selected vintage from the combo box vintage
+        selected_layer = self.dlg.comboBox_layer.currentText()  # Get the selected layer from the combo box layer
+
+        if selected_layer == "locations":
+            zmin="0"  # Minimum zoom level
+        else:
+            zmin="12"
+        sources = []
+        sources.append([f"API Fabric {selected_vintage} {selected_layer}", 
+                        "https://costquest.azure-api.net/fabric/%s/tiles/%s/{z}/{x}/{y}" % (selected_vintage, selected_layer),
+                        "14", 
+                        zmin,
+                        "no-cache",
+                        apikey,
+                        "https://cqazapihttp.blob.core.windows.net/$web/fabricstyles.json"])
+
+        # Add sources to browser
+        for source in sources:
+            connectionName = source[0]
+            QgsSettings().setValue("connections/vector-tile/items/%s/url" % (connectionName), source[1])
+            QgsSettings().setValue("connections/vector-tile/items/%s/zmax" % (connectionName), source[2])
+            QgsSettings().setValue("connections/vector-tile/items/%s/zmin" % (connectionName), source[3])
+            QgsSettings().setValue("connections/vector-tile/items/%s/http-header" % (connectionName), {'Cache-Control':source[4],'apikey':source[5]})
+            QgsSettings().setValue("connections/vector-tile/items/%s/styleUrl" % (connectionName), source[6])
+
+        # Refresh the browser
+        self.iface.mainWindow().findChildren(QWidget, 'Browser')[0].refresh()
+        self.iface.messageBar().pushMessage("Success", f"API Fabric {selected_vintage} {selected_layer} is added/updated to Browser", level=Qgis.Success)
+
 
 def verify_apikey(apikey):
     url = "https://api.costquest.com/accountcontrol/listkeys"
