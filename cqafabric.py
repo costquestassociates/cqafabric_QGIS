@@ -203,9 +203,15 @@ class CQAFabric:
         icon_path_3 = ':/plugins/cqafabric/icon3.png'
         icon3 = QIcon(icon_path_3)
         self.actionIdentifyData = QAction(icon3, self.tr("Identify Fabric data"))
+        self.actionIdentifyData.setCheckable(True)
         self.menu.addAction(self.actionIdentifyData)
         toolButtonMenu.addAction(self.actionIdentifyData)
-        self.actionIdentifyData.triggered.connect(self.IdentifyData)
+        self.actionIdentifyData.toggled.connect(self.IdentifyData)
+        #when the action is deactivated, remove the map tool
+        
+
+
+
 
         self.toolbar = self.iface.addToolBar(self.tr("&CQA Fabric"))
         self.toolbar.setObjectName('CQA Fabric')
@@ -517,12 +523,16 @@ class CQAFabric:
         # Set the map tool to the canvas
         canvas.setMapTool(self.pointTool)
 
-
-        # Show the dialog
-        self.dlg.show()
-
-        # if this action dialog is closed, remove the map tool
-        self.dlg.finished.connect(lambda: self.iface.mapCanvas().setMapTool(QgsMapToolEmitPoint(self.iface.mapCanvas())))
+        if self.actionIdentifyData.isChecked():
+            self.dlg.show()
+            self.dlg.finished.connect(lambda: self.iface.mapCanvas().setMapTool(QgsMapToolEmitPoint(self.iface.mapCanvas())))
+            self.dlg.finished.connect(lambda: self.actionIdentifyData.setChecked(False))
+        else:
+            self.dlg.close()
+            # if this action dialog is closed, deactivate the action
+        
+            
+        
         
 
 
