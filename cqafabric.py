@@ -22,12 +22,12 @@
  ***************************************************************************/
 """
 from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication, Qt
-from qgis.PyQt.QtGui import QIcon
+from qgis.PyQt.QtGui import QIcon, QColor
 from qgis.PyQt.QtWidgets import QAction, QToolButton, QMenu
 from PyQt5.QtWidgets import QMessageBox, QScrollArea, QVBoxLayout, QLabel, QWidget, QPushButton, QLineEdit
 from qgis.core import QgsDataSourceUri, QgsVectorTileLayer, QgsProject, QgsVectorLayer, Qgis, QgsJsonExporter, QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsSelectionContext, QgsFeature, QgsPointXY, QgsGeometry, QgsSettings
 import processing
-from qgis.gui import QgsMapToolEmitPoint
+from qgis.gui import QgsMapToolEmitPoint, QgsHighlight
 
 # Initialize Qt resources from file resources.py
 from .resources import *
@@ -51,7 +51,7 @@ ids = []
 
 class CQAFabric:
     """QGIS Plugin Implementation."""
-    
+
 
     def __init__(self, iface):
         self.iface = iface
@@ -170,7 +170,8 @@ class CQAFabric:
     def initGui(self):
         """Create the menu entries and toolbar icons inside the QGIS GUI."""
 
-        
+
+
         self.menu = self.iface.pluginMenu().addMenu(self.tr(
             "&CQA Fabric"))
         
@@ -486,6 +487,7 @@ class CQAFabric:
                     QgsProject.instance().addMapLayer(joinshp)
 
     def IdentifyData(self):   
+
         """Create an action to get coordinates from mouse clicks."""
         self.dlg = IdentifyDataDialog()  # Assuming you have a dialog for this action
         self.dlg.setWindowFlags(Qt.WindowStaysOnTopHint)
@@ -509,8 +511,8 @@ class CQAFabric:
         self.pointTool = QgsMapToolEmitPoint(canvas)
 
         # Connect the signal to a custom slot to handle the clicked point
-        self.pointTool.canvasClicked.connect(lambda point, button: self.display_point(
-            point, button, self.dlg.comboBox_vintage.currentText(), self.dlg.comboBox_layer.currentText()))
+        self.pointTool.canvasClicked.connect(lambda point, button: self.display_point(canvas,
+            point, self.dlg.comboBox_vintage.currentText(), self.dlg.comboBox_layer.currentText()))
 
         # Set the map tool to the canvas
         canvas.setMapTool(self.pointTool)
@@ -537,8 +539,13 @@ class CQAFabric:
             self.layout().addWidget(scroll, 0, 0, 1, self.layout().columnCount())
             self.setStyleSheet("QScrollArea{min-width:500px; min-height:400px}")
 
-    def display_point(self, point: QgsPointXY, button, selected_vintage, selected_layer):
+    def display_point(self, canvas,point: QgsPointXY, selected_vintage, selected_layer):
+        # Set up highlight variable
+        global highlight
+        highlight = None
         """Handle the point emitted by the map tool."""
+        # Clean the highlighted features
+        # Remove all highlights from the map canvas
         coords = "{}, {}".format(point.x(), point.y())
         self.dlg.lineEdit.setText(str(coords))
 
@@ -546,9 +553,11 @@ class CQAFabric:
 
         geom = QgsGeometry.fromPointXY(QgsPointXY(point.x(), point.y()))
         pt_geom = QgsGeometry().fromWkt(geom.asWkt())
-        xform = QgsCoordinateTransform(QgsCoordinateReferenceSystem('epsg:4326'), vector_tile_layer.crs(), QgsProject.instance())
+
+        xform = QgsCoordinateTransform(QgsProject.instance().crs(), vector_tile_layer.crs(), QgsProject.instance())
         pt_geom.transform(xform)
 
+        
         if selected_layer == "locations":
             bb_geom = QgsGeometry().fromRect(pt_geom.buffer(3, 1).boundingBox())
         else:
@@ -558,31 +567,23 @@ class CQAFabric:
         # Create a new memory layer for the bounding box
         
 
-        canvas = self.iface.mapCanvas()
+
         context = QgsSelectionContext()
-        context.setScale(canvas.scale())
+        context.setScale(self.iface.mapCanvas().scale())
 
         vector_tile_layer.selectByGeometry(bb_geom, context)
         ids = []
+        highlight = None
+        # Get the selected features
         for feature in vector_tile_layer.selectedFeatures():
+            tilegeom=feature.geometry()
+            # Highlight the feature on the map canvas
+            highlight = QgsHighlight(canvas, tilegeom, vector_tile_layer)
+            highlight.setColor(QColor("red"))
+            highlight.show()
             uuid = feature.attributes()[0]
             ids.append(uuid)
-        """
-        bb_layer = QgsVectorLayer("Polygon?crs=" + vector_tile_layer.crs().authid(), "Identified feature", "memory")
-        bb_layer.startEditing()
-        for feature in vector_tile_layer.selectedFeatures():
-                                newfeature = QgsFeature()
-                                tilegeom=feature.geometry()
-                                if selected_layer == "locations":
-                                    newfeature.setGeometry(tilegeom.buffer(1, 1))
-                                else:
-                                    newfeature.setGeometry(tilegeom)
-                                uuid=feature.attributes()[0]
-                                newfeature.setAttributes([uuid])
-                                bb_layer.dataProvider().addFeatures([newfeature])
-        bb_layer.commitChanges()
-        QgsProject.instance().addMapLayer(bb_layer)
-        """     
+     
         # Display the data in a scrollable message box
         if ids:
             for uuid in ids:
@@ -593,8 +594,12 @@ class CQAFabric:
                 result = self.ScrollMessageBox([html_content], self.dlg)
                 result.setWindowTitle(f"Fabric {selected_layer} - {selected_vintage}")
                 result.exec_()
-
-
+                # Clear the highlight after closing the message box
+                if highlight:
+                    highlight.hide()
+                    self.iface.mapCanvas().scene().removeItem(highlight)
+                    highlight = None
+            
 
 
         else:
@@ -673,7 +678,7 @@ class CQAFabric:
         self.iface.mainWindow().findChildren(QWidget, 'Browser')[0].refresh()
         self.iface.messageBar().pushMessage("Success", f"API Fabric {selected_vintage} {selected_layer} is added/updated to Browser", level=Qgis.Success)
 
-
+    
 def verify_apikey(apikey):
     url = "https://api.costquest.com/accountcontrol/listkeys"
 
