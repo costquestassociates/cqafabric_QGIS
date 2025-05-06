@@ -27,8 +27,8 @@ from qgis.PyQt.QtWidgets import QAction, QToolButton, QMenu
 from PyQt5.QtWidgets import QMessageBox, QScrollArea, QVBoxLayout, QLabel, QWidget, QPushButton, QLineEdit
 from qgis.core import QgsDataSourceUri, QgsVectorTileLayer, QgsProject, QgsVectorLayer, Qgis, QgsJsonExporter, QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsSelectionContext, QgsFeature, QgsPointXY, QgsGeometry, QgsSettings
 import processing
-from qgis.gui import QgsMapToolEmitPoint, QgsHighlight
-
+from qgis.gui import QgsMapToolEmitPoint, QgsHighlight, QgsMapToolIdentify
+from .generalfunctions import *
 # Initialize Qt resources from file resources.py
 from .resources import *
 # Import the code for the dialog
@@ -37,13 +37,11 @@ from .addfabrictiles_dialog import AddFabricTilesDialog
 from .retrievedata_dialog import RetrieveDataDialog
 from .identifydata_dialog import IdentifyDataDialog
 import os.path
-import urllib.request
 import json
-import requests
-import time
 import csv
 from qgis.PyQt.QtWidgets import QMessageBox
-#apikey = "cq-4601df7497bb9ce596c5eb8f197b90a8"
+
+
 baseuri = "https://api.costquest.com/"
 collect_calls = 0
 divide_calls = 0
@@ -51,7 +49,6 @@ ids = []
 
 class CQAFabric:
     """QGIS Plugin Implementation."""
-
 
     def __init__(self, iface):
         self.iface = iface
@@ -167,10 +164,10 @@ class CQAFabric:
 
         return action
 
+
     def initGui(self):
         """Create the menu entries and toolbar icons inside the QGIS GUI."""
-
-
+        # Connect the signal to the callback function
 
         self.menu = self.iface.pluginMenu().addMenu(self.tr(
             "&CQA Fabric"))
@@ -182,7 +179,7 @@ class CQAFabric:
             QToolButton.ToolButtonPopupMode.MenuButtonPopup)
         toolButtonMenu = self.toolButton.menu()
 
-
+        icon_path = ':/plugins/cqafabric/icon.png'
         '''# Create action for opening the Add Fabric Tiles window
         icon_path_1 = ':/plugins/cqafabric/icon1.png'
         icon1 = QIcon(icon_path_1)
@@ -207,12 +204,15 @@ class CQAFabric:
         self.menu.addAction(self.actionIdentifyData)
         toolButtonMenu.addAction(self.actionIdentifyData)
         self.actionIdentifyData.toggled.connect(self.IdentifyData)
-        #when the action is deactivated, remove the map tool
+
+        # Create action for getting coordinates from mouse click in QGIS3 in a plugin
+        icon4 = QIcon(icon_path)
+        self.actionIdentifyData_1 = QAction(icon4, self.tr("Identify Fabric data 1"))
+        self.actionIdentifyData_1.setCheckable(True)
+        self.menu.addAction(self.actionIdentifyData_1)
+        toolButtonMenu.addAction(self.actionIdentifyData_1)
+        self.actionIdentifyData_1.toggled.connect(self.IdentifyData_1)
         
-
-
-
-
         self.toolbar = self.iface.addToolBar(self.tr("&CQA Fabric"))
         self.toolbar.setObjectName('CQA Fabric')
 
@@ -220,6 +220,7 @@ class CQAFabric:
         #self.toolbar.addAction(self.actionAddFabricTiles)
         self.toolbar.addAction(self.actionRetrieveData)
         self.toolbar.addAction(self.actionIdentifyData)
+        self.toolbar.addAction(self.actionIdentifyData_1)
         
         self.first_start = True
 
@@ -262,6 +263,7 @@ class CQAFabric:
         else:
         # Show the authentication dialog
             self.auth_dialog.show()
+        
 
     def save_api_key(self):
             """Save the API key entered by the user."""
@@ -290,6 +292,7 @@ class CQAFabric:
             self.iface.removePluginVectorMenu('&CQA Fabric', action)
             self.iface.removeToolBarIcon(action)
         del self.toolbar
+    
 
     def AddFabricTiles(self):
         self.dlg = AddFabricTilesDialog()
@@ -318,6 +321,7 @@ class CQAFabric:
         # See if OK was pressed
         if result:
             self.add_fabrictiles()
+
 
     def RetrieveData(self):
             global ids
@@ -423,7 +427,7 @@ class CQAFabric:
                     
                     if self.dlg.checkBox_addlocations.isChecked() and selected_layer == "locations":
                         try:    
-                                combined_data = bulk(uuidjson_file,['latitude','longitude'],selected_vintage,"locations")
+                                combined_data = bulk(uuidjson_file,['latitude','longitude'],selected_vintage,"locations",apikey)
                                 output_file = os.path.join(self.plugin_dir +"\outputs", "selected_locations.csv")
                                 with open(output_file, mode="w", newline="") as file:
                                 # Get all keys from the first inner dictionary (assuming all dictionaries have the same structure)
@@ -460,7 +464,7 @@ class CQAFabric:
                     item = self.dlg.selectedFeaturesLw.item(i)
                     selected_fields.append(item.text())
                
-                combined_data = bulk(uuidjson_file,selected_fields,selected_vintage,selected_layer)
+                combined_data = bulk(uuidjson_file,selected_fields,selected_vintage,selected_layer,apikey)
                 # Convert data to CSV file
                 csvoutput_file = os.path.join(self.plugin_dir +"\outputs", "selected_fabricdata.csv")
                 
@@ -492,7 +496,200 @@ class CQAFabric:
                     joinshp=processing.run("native:joinattributestable", {'INPUT':layer,'FIELD':'uuid','INPUT_2':csvoutput_file,'FIELD_2':'uuid','FIELDS_TO_COPY':[],'METHOD':1,'DISCARD_NONMATCHING':False,'PREFIX':'','OUTPUT':'TEMPORARY_OUTPUT'})['OUTPUT']
                     QgsProject.instance().addMapLayer(joinshp)
 
-    def IdentifyData(self):   
+
+    def add_fabrictiles(self):
+        selected_vintage = self.dlg.comboBox_vintage.currentText()  # Get the selected vintage from the combo box vintage
+        selected_layer = self.dlg.comboBox_layer.currentText()  # Get the selected layer from the combo box layer
+        vector_tile_layer=load_fabricvectortilelayer(selected_vintage,selected_layer,apikey)
+        vector_tile_layer.loadDefaultStyle()
+        # Check if the layer is valid
+        if vector_tile_layer.isValid():
+            # Add the layer to the map
+            QgsProject.instance().addMapLayer(vector_tile_layer)
+        else:
+            # Handle the case when the layer is not valid
+            self.iface.messageBar().pushMessage("Error", "Failed to load vector tile layer.", level=Qgis.Critical)
+
+
+    def remove_fabrictiles(self,name):
+        # Remove the layer from the map
+        layers = QgsProject.instance().mapLayers().values()
+        for layer in layers:
+            if layer.name() == name:
+                QgsProject.instance().removeMapLayer(layer.id())
+                break
+    
+
+    def add_fabrictilessource(self):
+        selected_vintage = self.dlg.comboBox_vintage.currentText()  # Get the selected vintage from the combo box vintage
+        selected_layer = self.dlg.comboBox_layer.currentText()  # Get the selected layer from the combo box layer
+
+        if selected_layer == "locations":
+            zmin="0"  # Minimum zoom level
+        else:
+            zmin="12"
+        sources = []
+        sources.append([f"API Fabric {selected_vintage} {selected_layer}", 
+                        "https://costquest.azure-api.net/fabric/%s/tiles/%s/{z}/{x}/{y}" % (selected_vintage, selected_layer),
+                        "14", 
+                        zmin,
+                        "no-cache",
+                        apikey,
+                        "https://cqazapihttp.blob.core.windows.net/$web/fabricstyles.json"])
+
+        # Add sources to browser
+        for source in sources:
+            connectionName = source[0]
+            QgsSettings().setValue("connections/vector-tile/items/%s/url" % (connectionName), source[1])
+            QgsSettings().setValue("connections/vector-tile/items/%s/zmax" % (connectionName), source[2])
+            QgsSettings().setValue("connections/vector-tile/items/%s/zmin" % (connectionName), source[3])
+            QgsSettings().setValue("connections/vector-tile/items/%s/http-header" % (connectionName), {'Cache-Control':source[4],'apikey':source[5]})
+            QgsSettings().setValue("connections/vector-tile/items/%s/styleUrl" % (connectionName), source[6])
+
+        # Refresh the browser
+        self.iface.mainWindow().findChildren(QWidget, 'Browser')[0].refresh()
+        self.iface.messageBar().pushMessage("Success", f"API Fabric {selected_vintage} {selected_layer} is added/updated to Browser", level=Qgis.Success)
+
+
+    def IdentifyData(self):  
+        # get the current active layer every time when the active layer is changed
+        
+        if self.actionIdentifyData.isChecked():
+            # get the uri of the layer
+
+
+            # Reference to the map canvas
+            canvas = self.iface.mapCanvas()
+
+            # Create a map tool to emit points on mouse click
+            self.pointTool = QgsMapToolEmitPoint(canvas)
+                
+            # Connect the signal to a custom slot to handle the clicked point
+            self.pointTool.canvasClicked.connect(lambda point, button: self.display_point(point))
+
+            # Set the map tool to the canvas
+            canvas.setMapTool(self.pointTool)
+
+        
+        else:
+            self.iface.mapCanvas().setMapTool(QgsMapToolEmitPoint(self.iface.mapCanvas()))
+
+
+    class ScrollMessageBox(QMessageBox):
+        def __init__(self, content_list, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            scroll = QScrollArea(self)
+            scroll.setWidgetResizable(True)
+            self.content = QWidget()
+            scroll.setWidget(self.content)
+            layout = QVBoxLayout(self.content)
+            for item in content_list:
+                layout.addWidget(QLabel(item, self))
+            self.layout().addWidget(scroll, 0, 0, 1, self.layout().columnCount())
+            self.setStyleSheet("QScrollArea{min-width:500px; min-height:400px}")
+
+
+    def display_point(self,point: QgsPointXY):
+        layer = self.iface.activeLayer()
+        global highlight
+        highlight = None
+        try:
+            uri = layer.dataProvider().dataSourceUri()
+            # get the url of uri
+            url = uri.split("url=")[1].split("&")[0]
+            selected_vintage = url.split("fabric/")[1].split("/")[0]
+            selected_layer = url.split("tiles/")[1].split("/")[0]
+        
+            # Set up highlight variable
+
+            """Handle the point emitted by the map tool."""
+            # Clean the highlighted features
+            # Remove all highlights from the map canvas
+            #coords = "{}, {}".format(point.x(), point.y())
+            #self.dlg.lineEdit.setText(str(coords))
+  
+            geom = QgsGeometry.fromPointXY(QgsPointXY(point.x(), point.y()))
+            pt_geom = QgsGeometry().fromWkt(geom.asWkt())
+
+            xform = QgsCoordinateTransform(QgsProject.instance().crs(), layer.crs(), QgsProject.instance())
+            pt_geom.transform(xform)
+
+            
+            if selected_layer == "locations":
+                bb_geom = QgsGeometry().fromRect(pt_geom.buffer(5, 50).boundingBox())
+            else:
+                bb_geom = QgsGeometry().fromRect(pt_geom.buffer(0.001, 50).boundingBox())
+
+            # Add the bb_geom to the map canvas as temporary layer
+            # Create a new memory layer for the bounding box
+            
+
+
+            context = QgsSelectionContext()
+            context.setScale(self.iface.mapCanvas().scale())
+
+            layer.selectByGeometry(bb_geom, context)
+            ids = []
+            highlight = None
+            # Get the selected features
+            for feature in layer.selectedFeatures():
+                tilegeom=feature.geometry()
+                # Highlight the feature on the map canvas
+                highlight = QgsHighlight(self.iface.mapCanvas(), tilegeom, layer)
+                highlight.setColor(QColor("red"))
+                highlight.show()
+                uuid = feature.attributes()[0]
+                ids.append(uuid)
+        
+            # Display the data in a scrollable message box
+            if ids:
+                for uuid in ids:
+                    data = individualdata(selected_vintage, selected_layer, apikey, uuid)
+                    # Format the data as a list of strings for the scrollable message box
+                    content_list = [f"<tr><td style='border: 1px solid black;'><b>{key}</b></td><td style='border: 1px solid black;'>{value}</td></tr>" for key, value in data.items()]
+                    html_content = f"<table style='border-collapse: collapse;'>{''.join(content_list)}</table>"
+                    result = self.ScrollMessageBox([html_content])
+                    result.setWindowTitle(f"Fabric {selected_layer} - {selected_vintage}")
+                    result.exec_()
+                    # Clear the highlight after closing the message box
+                    if highlight:
+                        highlight.hide()
+                        self.iface.mapCanvas().scene().removeItem(highlight)
+                        highlight = None
+                    # remove layer selection
+                    layer.removeSelection()
+                
+
+
+            else:
+                self.iface.messageBar().pushMessage("Info", "No features found at the clicked location.", level=Qgis.Info)
+                    
+        except:
+                self.iface.messageBar().pushMessage("Error", "No layer selected.", level=Qgis.Critical)
+                return False            
+                        
+
+    def run(self):
+        """Run method that performs all the real work"""
+
+        # Create the dialog with elements (after translation) and keep reference
+        # Only create GUI ONCE in callback, so that it will only load when the plugin is started
+        if self.first_start == True:
+            self.first_start = False
+            self.dlg = CQAFabricDialog()
+
+        # show the dialog
+        self.dlg.show()
+        # Run the dialog event loop
+        result = self.dlg.exec_()
+        # See if OK was pressed
+        if result:
+            # Do something useful here - delete the line containing pass and
+            # substitute with your code.
+            pass
+    
+
+    def IdentifyData_dlg(self):   
 
         """Create an action to get coordinates from mouse clicks."""
         self.dlg = IdentifyDataDialog()  # Assuming you have a dialog for this action
@@ -529,307 +726,45 @@ class CQAFabric:
             self.dlg.finished.connect(lambda: self.actionIdentifyData.setChecked(False))
         else:
             self.dlg.close()
-            # if this action dialog is closed, deactivate the action
+            # if this action dialog is closed, deactivate the action        
+      
+
+    def IdentifyData_1(self):  
+        # get the current active layer every time when the active layer is changed
         
+        if self.actionIdentifyData_1.isChecked():
+            # get the uri of the layer
+
+
+            # Reference to the map canvas
+            canvas = self.iface.mapCanvas()
             
-        
-        
-
-
-    class ScrollMessageBox(QMessageBox):
-        def __init__(self, content_list, *args, **kwargs):
-            super().__init__(*args, **kwargs)
-            scroll = QScrollArea(self)
-            scroll.setWidgetResizable(True)
-            self.content = QWidget()
-            scroll.setWidget(self.content)
-            layout = QVBoxLayout(self.content)
-            for item in content_list:
-                layout.addWidget(QLabel(item, self))
-            self.layout().addWidget(scroll, 0, 0, 1, self.layout().columnCount())
-            self.setStyleSheet("QScrollArea{min-width:500px; min-height:400px}")
-
-    def display_point(self, canvas,point: QgsPointXY, selected_vintage, selected_layer):
-        # Set up highlight variable
-        global highlight
-        highlight = None
-        """Handle the point emitted by the map tool."""
-        # Clean the highlighted features
-        # Remove all highlights from the map canvas
-        coords = "{}, {}".format(point.x(), point.y())
-        self.dlg.lineEdit.setText(str(coords))
-
-        vector_tile_layer = load_fabricvectortilelayer(selected_vintage, selected_layer, apikey)
-
-        geom = QgsGeometry.fromPointXY(QgsPointXY(point.x(), point.y()))
-        pt_geom = QgsGeometry().fromWkt(geom.asWkt())
-
-        xform = QgsCoordinateTransform(QgsProject.instance().crs(), vector_tile_layer.crs(), QgsProject.instance())
-        pt_geom.transform(xform)
-
-        
-        if selected_layer == "locations":
-            bb_geom = QgsGeometry().fromRect(pt_geom.buffer(3, 1).boundingBox())
-        else:
-            bb_geom = QgsGeometry().fromRect(pt_geom.buffer(0.001, 1).boundingBox())
-
-        # Add the bb_geom to the map canvas as temporary layer
-        # Create a new memory layer for the bounding box
-        
-
-
-        context = QgsSelectionContext()
-        context.setScale(self.iface.mapCanvas().scale())
-
-        vector_tile_layer.selectByGeometry(bb_geom, context)
-        ids = []
-        highlight = None
-        # Get the selected features
-        for feature in vector_tile_layer.selectedFeatures():
-            tilegeom=feature.geometry()
-            # Highlight the feature on the map canvas
-            highlight = QgsHighlight(canvas, tilegeom, vector_tile_layer)
-            highlight.setColor(QColor("red"))
-            highlight.show()
-            uuid = feature.attributes()[0]
-            ids.append(uuid)
-     
-        # Display the data in a scrollable message box
-        if ids:
-            for uuid in ids:
-                data = individualdata(selected_vintage, selected_layer, apikey, uuid)
-                # Format the data as a list of strings for the scrollable message box
-                content_list = [f"<tr><td style='border: 1px solid black;'><b>{key}</b></td><td style='border: 1px solid black;'>{value}</td></tr>" for key, value in data.items()]
-                html_content = f"<table style='border-collapse: collapse;'>{''.join(content_list)}</table>"
-                result = self.ScrollMessageBox([html_content], self.dlg)
-                result.setWindowTitle(f"Fabric {selected_layer} - {selected_vintage}")
-                result.exec_()
-                # Clear the highlight after closing the message box
-                if highlight:
-                    highlight.hide()
-                    self.iface.mapCanvas().scene().removeItem(highlight)
-                    highlight = None
-            
-
-
-        else:
-            self.iface.messageBar().pushMessage("Info", "No features found at the clicked location.", level=Qgis.Info)
+            # Create a map tool to emit points on mouse click
+            self.pointTool = QgsMapToolEmitPoint(canvas)
                 
-                    
-                        
-    
-    def run(self):
-        """Run method that performs all the real work"""
+            # Connect the signal to a custom slot to handle the clicked point
+            self.pointTool.canvasClicked.connect(lambda point, button: self.onFeatureIdentified(point))
+            # Convert point from QgsPointXY to geometry
+            
 
-        # Create the dialog with elements (after translation) and keep reference
-        # Only create GUI ONCE in callback, so that it will only load when the plugin is started
-        if self.first_start == True:
-            self.first_start = False
-            self.dlg = CQAFabricDialog()
-
-        # show the dialog
-        self.dlg.show()
-        # Run the dialog event loop
-        result = self.dlg.exec_()
-        # See if OK was pressed
-        if result:
-            # Do something useful here - delete the line containing pass and
-            # substitute with your code.
-            pass
-
-    def add_fabrictiles(self):
-        selected_vintage = self.dlg.comboBox_vintage.currentText()  # Get the selected vintage from the combo box vintage
-        selected_layer = self.dlg.comboBox_layer.currentText()  # Get the selected layer from the combo box layer
-        vector_tile_layer=load_fabricvectortilelayer(selected_vintage,selected_layer,apikey)
-        vector_tile_layer.loadDefaultStyle()
-        # Check if the layer is valid
-        if vector_tile_layer.isValid():
-            # Add the layer to the map
-            QgsProject.instance().addMapLayer(vector_tile_layer)
-        else:
-            # Handle the case when the layer is not valid
-            self.iface.messageBar().pushMessage("Error", "Failed to load vector tile layer.", level=Qgis.Critical)
-
-    def remove_fabrictiles(self,name):
-        # Remove the layer from the map
-        layers = QgsProject.instance().mapLayers().values()
-        for layer in layers:
-            if layer.name() == name:
-                QgsProject.instance().removeMapLayer(layer.id())
-                break
-    
-    def add_fabrictilessource(self):
-        selected_vintage = self.dlg.comboBox_vintage.currentText()  # Get the selected vintage from the combo box vintage
-        selected_layer = self.dlg.comboBox_layer.currentText()  # Get the selected layer from the combo box layer
-
-        if selected_layer == "locations":
-            zmin="0"  # Minimum zoom level
-        else:
-            zmin="12"
-        sources = []
-        sources.append([f"API Fabric {selected_vintage} {selected_layer}", 
-                        "https://costquest.azure-api.net/fabric/%s/tiles/%s/{z}/{x}/{y}" % (selected_vintage, selected_layer),
-                        "14", 
-                        zmin,
-                        "no-cache",
-                        apikey,
-                        "https://cqazapihttp.blob.core.windows.net/$web/fabricstyles.json"])
-
-        # Add sources to browser
-        for source in sources:
-            connectionName = source[0]
-            QgsSettings().setValue("connections/vector-tile/items/%s/url" % (connectionName), source[1])
-            QgsSettings().setValue("connections/vector-tile/items/%s/zmax" % (connectionName), source[2])
-            QgsSettings().setValue("connections/vector-tile/items/%s/zmin" % (connectionName), source[3])
-            QgsSettings().setValue("connections/vector-tile/items/%s/http-header" % (connectionName), {'Cache-Control':source[4],'apikey':source[5]})
-            QgsSettings().setValue("connections/vector-tile/items/%s/styleUrl" % (connectionName), source[6])
-
-        # Refresh the browser
-        self.iface.mainWindow().findChildren(QWidget, 'Browser')[0].refresh()
-        self.iface.messageBar().pushMessage("Success", f"API Fabric {selected_vintage} {selected_layer} is added/updated to Browser", level=Qgis.Success)
-
-    
-def verify_apikey(apikey):
-    url = "https://api.costquest.com/accountcontrol/listkeys"
-
-    hdr ={
-    # Request headers
-    'Cache-Control': 'no-cache',
-    'apikey': apikey,
-    }
-    try:
-        req = urllib.request.Request(url, headers=hdr)
-        req.get_method = lambda: 'GET'
-        response = urllib.request.urlopen(req)
-        if response.getcode() == 200:
-            return True
-        else:
-            return False
-    except Exception as e:
-        return False
-
-def load_vintages(apikey):
-    url = "https://costquest.azure-api.net/fabric/vintages"
-
-    hdr ={
-    # Request headers
-    'Cache-Control': 'no-cache',
-    'apikey': apikey,
-    }
-    req = urllib.request.Request(url, headers=hdr)
-    req.get_method = lambda: 'GET'
-    response = urllib.request.urlopen(req)
-    if response.getcode() == 200:
-        data = json.loads(response.read())
-        vintages = [item.get('vintage') for item in data if isinstance(item, dict)]
-        return vintages
-    else:
-        print("Failed to fetch vintages. HTTP Code:", response.getcode())
-
-def load_fabricvectortilelayer(selected_vintage,selected_layer,apikey):
-    vector_tile_url = f"https://costquest.azure-api.net/fabric/{selected_vintage}/tiles/{selected_layer}/{{z}}/{{x}}/{{y}}"
-    styleUrl = f"https://cqazapihttp.blob.core.windows.net/$web/fabricstyles.json"
-    # Create a QgsDataSourceUri object
-    uri = QgsDataSourceUri()
-
-    # Set the required parameters
-    uri.setParam("styleUrl", styleUrl)  # Style URL
-    uri.setParam("type", "xyz")  # Style URL
-    uri.setParam("url", vector_tile_url)  # Base URL with placeholders
-    uri.setParam("zmax", "14")  # Maximum zoom level
-    if selected_layer == "locations":
-        uri.setParam("zmin", "0")  # Minimum zoom level
-    else:
-        uri.setParam("zmin", "12")
-    uri.setParam("http-header:apikey",apikey)  # API key for authentication
-    uri.setParam("http-header:Cache-Control", "no-cache")  # Cache control header
-
-    # Encode the URI
-    encoded_uri = uri.encodedUri().data().decode()
-    #self.iface.messageBar().pushMessage("Message", encoded_uri, level=Qgis.Info)
-    # Create the vector tile layer
-    vector_tile_layer = QgsVectorTileLayer(encoded_uri, f"Fabric {selected_vintage} - {selected_layer}")
-    return vector_tile_layer
-
-def bulk(uuidjson,fieldlist,selected_vintage,selected_layer):
-    # Create the URL for the API request
-    
-
-    hdr ={
-    # Request headers
-    'Content-Type': 'application/json',
-    'Cache-Control': 'no-cache',
-    'apikey': apikey,
-    }
-
-    # Request body
-    # Read the JSON file
-    with open(uuidjson, 'r') as f:
-        data = json.load(f)
-    batch_size = 1000  # Number of records to process at a time
-    total_records = len(data)
-    combined_data = []
-
-    field_size = 5
-    total_fields = len(fieldlist)
-    for start_1 in range(0, total_fields, field_size):
-        fieldlist_sub = fieldlist[start_1:start_1 + field_size]
-        url = f"https://costquest.azure-api.net/fabric/{selected_vintage}/bulk/{selected_layer}?field=" + ",".join(fieldlist_sub)
-
-        for start in range(0, total_records, batch_size):
-            # Get the current batch of records
-            batch = data[start:start + batch_size]
-
-            req = urllib.request.Request(url, headers=hdr, data=json.dumps(batch).encode('utf-8'))
-
-            req.get_method = lambda: 'POST'
-            response = urllib.request.urlopen(req)
-            response_data = json.loads(response.read())
-            combined_data.extend(response_data)
+            # Set the map tool to the canvas
+            canvas.setMapTool(self.pointTool)
         
-        # join the data by uuid
-        combined_data_dict = {}
-        for item in combined_data:
-            if isinstance(item, dict):
-                uuid = item.get("uuid")
-                if uuid not in combined_data_dict:
-                    combined_data_dict[uuid] = {}
-                combined_data_dict[uuid].update(item)
+        else:
+            self.iface.mapCanvas().setMapTool(QgsMapToolEmitPoint(self.iface.mapCanvas()))   
+              
+        
+    def onFeatureIdentified(self,point):
+        # Create an identify tool
+        identify_tool = QgsMapToolIdentify(self.iface.mapCanvas())
+        # Perform the identification
+        point_geom = QgsGeometry.fromPointXY(point)
+        results = identify_tool.identify(point, QgsMapToolIdentify.TopDownStopAtFirst, [self.iface.activeLayer()])
 
-    return combined_data_dict
+        # Process the results
+        for result in results:
+            print(result.mFeature.attributes())   
+            print("feature selected")  
 
 
-def collect(geojson,selected_vintage):
-    global ids
-    global collect_calls
-    global divide_calls
-    collect_calls += 1
-    collect_ids = requests.post(baseuri + "fabric/" + selected_vintage + "/collect", json=geojson, headers={"apikey": apikey}).json()
-    if len(collect_ids)>=5000:
-        divide_results = requests.post(baseuri + "geosvc/divide", json=geojson, headers={"apikey": apikey}).json()
-        for db in divide_results:
-            divide_calls += 1
-            print("divide " + str(divide_calls))
-            collect(geojson,selected_vintage)
-    else:
-        print("adding " + str(len(collect_ids)) + " ids")
-        ids = ids + collect_ids
-
-def individualdata(selected_vintage,selected_layer,apikey,uuid):
-    url = f"https://costquest.azure-api.net/fabric/{selected_vintage}/data/{selected_layer}?uuid={uuid}"
-
-    hdr ={
-    # Request headers
-    'Cache-Control': 'no-cache',
-    'apikey': apikey,
-    }
-
-    req = urllib.request.Request(url, headers=hdr)
-
-    req.get_method = lambda: 'GET'
-    response = urllib.request.urlopen(req)
-    if response.getcode() == 200:
-        data = json.loads(response.read())
-        return data
-    else:
-        print("Failed to fetch vintages. HTTP Code:", response.getcode())
+      

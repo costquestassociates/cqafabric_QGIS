@@ -122,7 +122,7 @@ class RetrieveDataDialog(QtWidgets.QDialog, FORM_CLASS):
         vintage= self.comboBox_vintage.currentText()
         layer= self.comboBox_layer.currentText()
 
-        list = RetrieveDataDialog.getavailablefeatures(vintage,layer)
+        list = RetrieveDataDialog.getavailablefields(vintage,layer)
 
         if list:
             # Populate the available features list widget with field names
@@ -152,7 +152,7 @@ class RetrieveDataDialog(QtWidgets.QDialog, FORM_CLASS):
 
 
     
-    def getavailablefeatures(vintage:str,layer:str):
+    def getavailablefields(vintage:str,layer:str):
         url = f"https://costquest.azure-api.net/fabric/{vintage}/fields/{layer}"
 
         hdr ={
@@ -182,7 +182,7 @@ class RetrieveDataDialog(QtWidgets.QDialog, FORM_CLASS):
         vintage= self.comboBox_vintage.currentText()
         layer= self.comboBox_layer.currentText()
 
-        list = RetrieveDataDialog.getavailablefeatures(vintage,layer)
+        list = RetrieveDataDialog.getavailablefields(vintage,layer)
         listWidget.clear()
         for field in reversed(list):
             item = QListWidgetItem(field)
