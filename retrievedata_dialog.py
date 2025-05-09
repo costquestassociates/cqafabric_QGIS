@@ -166,10 +166,14 @@ class RetrieveDataDialog(QtWidgets.QDialog, FORM_CLASS):
         req.get_method = lambda: 'GET'
         response = urllib.request.urlopen(req)
         if response.getcode() == 200:
-            data = json.loads(response.read())
-            fieldnames = [item.get('fieldname') for item in data if isinstance(item, dict)]
+            data = json.loads(response.read()) 
+            # sort the data by listorder
+            data.sort(key=lambda x: x.get('listorder') or 0, reverse=True)
+            fieldnames = [
+                item.get('displayname') if item.get('displayname') else item.get('fieldname') 
+                for item in data if isinstance(item, dict)
+            ]
             print("List of fieldname:", fieldnames)
-            fieldnames.sort(reverse=True)
             return fieldnames
         else:
             print("Failed to fetch fieldname. HTTP Code:", response.getcode())

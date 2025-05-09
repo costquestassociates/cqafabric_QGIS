@@ -175,9 +175,12 @@ class CQAFabric:
         self.toolButton = QToolButton()
         self.toolButton.setMenu(QMenu())
         self.toolButton.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
-        self.toolButton.setPopupMode(
-            QToolButton.ToolButtonPopupMode.MenuButtonPopup)
+        self.toolButton.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
         toolButtonMenu = self.toolButton.menu()
+
+        # Add actions to the toolbar
+        self.toolbar = self.iface.addToolBar(self.tr("&CQA Fabric"))
+        self.toolbar.setObjectName('CQA Fabric')
 
         icon_path = ':/plugins/cqafabric/icon.png'
         '''# Create action for opening the Add Fabric Tiles window
@@ -187,6 +190,7 @@ class CQAFabric:
         self.menu.addAction(self.actionAddFabricTiles)
         toolButtonMenu.addAction(self.actionAddFabricTiles)
         self.actionAddFabricTiles.triggered.connect(self.AddFabricTiles)
+        self.toolbar.addAction(self.actionAddFabricTiles)
         '''
         # Create action for opening the Retrieve data fields window
         icon_path_2 = ':/plugins/cqafabric/icon2.png'
@@ -195,6 +199,7 @@ class CQAFabric:
         self.menu.addAction(self.actionRetrieveData)
         toolButtonMenu.addAction(self.actionRetrieveData)
         self.actionRetrieveData.triggered.connect(self.RetrieveData)
+        self.toolbar.addAction(self.actionRetrieveData)
 
         # Create action for getting coordinates from mouse click in QGIS3 in a plugin
         icon_path_3 = ':/plugins/cqafabric/icon3.png'
@@ -204,7 +209,9 @@ class CQAFabric:
         self.menu.addAction(self.actionIdentifyData)
         toolButtonMenu.addAction(self.actionIdentifyData)
         self.actionIdentifyData.toggled.connect(self.IdentifyData)
+        self.toolbar.addAction(self.actionIdentifyData)
 
+        '''
         # Create action for getting coordinates from mouse click in QGIS3 in a plugin
         icon4 = QIcon(icon_path)
         self.actionIdentifyData_1 = QAction(icon4, self.tr("Identify Fabric data 1"))
@@ -212,16 +219,9 @@ class CQAFabric:
         self.menu.addAction(self.actionIdentifyData_1)
         toolButtonMenu.addAction(self.actionIdentifyData_1)
         self.actionIdentifyData_1.toggled.connect(self.IdentifyData_1)
-        
-        self.toolbar = self.iface.addToolBar(self.tr("&CQA Fabric"))
-        self.toolbar.setObjectName('CQA Fabric')
-
-        # Add actions to the toolbar
-        #self.toolbar.addAction(self.actionAddFabricTiles)
-        self.toolbar.addAction(self.actionRetrieveData)
-        self.toolbar.addAction(self.actionIdentifyData)
         self.toolbar.addAction(self.actionIdentifyData_1)
-        
+        '''
+
         self.first_start = True
 
         # Add authentication window for user to input credentials
@@ -309,7 +309,7 @@ class CQAFabric:
         self.dlg.comboBox_vintage.clear()
         self.dlg.comboBox_vintage.addItems(layer_list)
 
-        layer_list = ["locations", "footprints", "parcels"]
+        layer_list = getlayersnames(apikey)
         self.dlg.comboBox_layer.clear()
         self.dlg.comboBox_layer.addItems(layer_list)
 
@@ -340,7 +340,7 @@ class CQAFabric:
             self.dlg.comboBox_vintage.clear()
             self.dlg.comboBox_vintage.addItems(layer_list)
 
-            layer_list = ["locations", "footprints", "parcels"]
+            layer_list = getlayersnames(apikey)
             self.dlg.comboBox_layer.clear()
             self.dlg.comboBox_layer.addItems(layer_list)
 
@@ -355,8 +355,16 @@ class CQAFabric:
 
             # if pushButton_AddTiles is clicked, add tiles to the map
             self.dlg.pushButton_AddTiles_S.clicked.connect(lambda: self.add_fabrictilessource())
+            data = [
+                {"Name": "Alice", "Age": 30, "City": "New York"},
+                {"Name": "Bob", "Age": 25, "City": "Los Angeles"},
+                {"Name": "Charlie", "Age": 35, "City": "Chicago"}
+            ]
+            self.dlg.populatetableBtn.clicked.connect(lambda: populate_table_result(self.dlg.tableResult, data))
 
 
+                    
+                    
 
 
             # Run the dialog event loop
@@ -466,7 +474,7 @@ class CQAFabric:
                
                 combined_data = bulk(uuidjson_file,selected_fields,selected_vintage,selected_layer,apikey)
                 # Convert data to CSV file
-                csvoutput_file = os.path.join(self.plugin_dir +"\outputs", "selected_fabricdata.csv")
+                csvoutput_file = os.path.join(self.plugin_dir +"\outputs", f"FabricSelection_{selected_layer} - {selected_vintage}.csv")
                 
                 with open(csvoutput_file, mode="w", newline="") as file:
                     
@@ -489,12 +497,17 @@ class CQAFabric:
             
 
                 # Create a new delimited text layer
-                delimited_layer = QgsVectorLayer(uri, "selected_fabricdata", "delimitedtext")
+                delimited_layer = QgsVectorLayer(uri, f"FabricSelection_{selected_layer} - {selected_vintage}", "delimitedtext")
                 QgsProject.instance().addMapLayer(delimited_layer)
                 
                 if self.dlg.checkBox_addlocations.isChecked():
                     joinshp=processing.run("native:joinattributestable", {'INPUT':layer,'FIELD':'uuid','INPUT_2':csvoutput_file,'FIELD_2':'uuid','FIELDS_TO_COPY':[],'METHOD':1,'DISCARD_NONMATCHING':False,'PREFIX':'','OUTPUT':'TEMPORARY_OUTPUT'})['OUTPUT']
+                    joinshp.setName(f"FabricSelection_{selected_layer} - {selected_vintage}")
                     QgsProject.instance().addMapLayer(joinshp)
+                
+
+
+                
 
 
     def add_fabrictiles(self):
@@ -586,20 +599,24 @@ class CQAFabric:
             for item in content_list:
                 layout.addWidget(QLabel(item, self))
             self.layout().addWidget(scroll, 0, 0, 1, self.layout().columnCount())
-            self.setStyleSheet("QScrollArea{min-width:500px; min-height:400px}")
+            self.setStyleSheet("QScrollArea{min-width:650px; min-height:400px}")
 
 
     def display_point(self,point: QgsPointXY):
         layer = self.iface.activeLayer()
         global highlight
         highlight = None
+        
         try:
+
             uri = layer.dataProvider().dataSourceUri()
             # get the url of uri
             url = uri.split("url=")[1].split("&")[0]
             selected_vintage = url.split("fabric/")[1].split("/")[0]
             selected_layer = url.split("tiles/")[1].split("/")[0]
-        
+            
+            fieldinfo = getfieldsinfo(selected_vintage, selected_layer, apikey)
+            
             # Set up highlight variable
 
             """Handle the point emitted by the map tool."""
@@ -640,14 +657,46 @@ class CQAFabric:
                 highlight.show()
                 uuid = feature.attributes()[0]
                 ids.append(uuid)
-        
+            
             # Display the data in a scrollable message box
             if ids:
                 for uuid in ids:
                     data = individualdata(selected_vintage, selected_layer, apikey, uuid)
                     # Format the data as a list of strings for the scrollable message box
-                    content_list = [f"<tr><td style='border: 1px solid black;'><b>{key}</b></td><td style='border: 1px solid black;'>{value}</td></tr>" for key, value in data.items()]
-                    html_content = f"<table style='border-collapse: collapse;'>{''.join(content_list)}</table>"
+                    #displayname = [item.get('displayname') for item in data if isinstance(item, dict) and item.get('fieldname') == key][0]
+                    content_Dict ={}
+                    for key, value in data.items():
+                        try:
+                            
+                            displayname = [item.get('displayname') for item in fieldinfo if isinstance(item, dict) and item.get('fieldname') == key][0]
+                            if not displayname:
+                                displayname = key
+                        except:
+                            displayname = key
+                        try:
+                            listorder = [item.get('listorder') for item in fieldinfo if isinstance(item, dict) and item.get('fieldname') == key][0]
+                            if not listorder :
+                                listorder = max(content_Dict.keys()) + 1
+                        except:
+                            if 9999 in content_Dict.keys():
+                                listorder = max(content_Dict.keys()) + 1
+                            else:
+                                listorder = 9999
+                        content_Dict[listorder] = f"<tr><td style='border: 1px solid black;'><b>{displayname}</b></td><td style='border: 1px solid black;'>{value}</td></tr>"
+                    # Sort the content dictionary by listorder and generate HTML rows
+                    sorted_content = sorted(content_Dict.items(), key=lambda x: x[0])
+                    html_rows = ''.join(item[1] for item in sorted_content)
+                    
+                    # Create the complete HTML content for the message box
+                    html_content = f"""
+                    <html>
+                        <body>
+                            <table style='border-collapse: collapse; width: 100%; border: 1px solid black;'>
+                                {html_rows}
+                            </table>
+                        </body>
+                    </html>
+                    """
                     result = self.ScrollMessageBox([html_content])
                     result.setWindowTitle(f"Fabric {selected_layer} - {selected_vintage}")
                     result.exec_()
@@ -665,7 +714,7 @@ class CQAFabric:
                 self.iface.messageBar().pushMessage("Info", "No features found at the clicked location.", level=Qgis.Info)
                     
         except:
-                self.iface.messageBar().pushMessage("Error", "No layer selected.", level=Qgis.Critical)
+                self.iface.messageBar().pushMessage("Info", "Please activate a fabric vector tile layer", level=Qgis.Info)
                 return False            
                         
 
@@ -701,7 +750,7 @@ class CQAFabric:
         self.dlg.comboBox_vintage.clear()
         self.dlg.comboBox_vintage.addItems(layer_list)
 
-        layer_list = ["locations", "footprints", "parcels"]
+        layer_list = getlayersnames(apikey)
         self.dlg.comboBox_layer.clear()
         self.dlg.comboBox_layer.addItems(layer_list)
 
@@ -728,7 +777,7 @@ class CQAFabric:
             self.dlg.close()
             # if this action dialog is closed, deactivate the action        
       
-
+'''
     def IdentifyData_1(self):  
         # get the current active layer every time when the active layer is changed
         
@@ -765,6 +814,6 @@ class CQAFabric:
         for result in results:
             print(result.mFeature.attributes())   
             print("feature selected")  
-
+'''
 
       
