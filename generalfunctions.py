@@ -172,12 +172,33 @@ def getfieldsinfo(vintage:str,layer:str,apikey):
         response = urllib.request.urlopen(req)
         if response.getcode() == 200:
             data = json.loads(response.read())
-            # sort the data by listorder
             return data
             #fieldnames = [item.get('fieldname') for item in data if isinstance(item, dict)]
 
         else:
             print("Failed to fetch fields information. HTTP Code:", response.getcode())
+            
+def getfieldsdisplayname(vintage:str,layer:str,apikey):   
+        url = f"https://costquest.azure-api.net/fabric/{vintage}/fields/{layer}"
+
+        hdr ={
+        # Request headers
+        'Cache-Control': 'no-cache',
+        'apikey': apikey,
+        }
+
+        req = urllib.request.Request(url, headers=hdr)
+
+        req.get_method = lambda: 'GET'
+        response = urllib.request.urlopen(req)
+        if response.getcode() == 200:
+            data = json.loads(response.read()) 
+            # sort the data by listorder
+            data.sort(key=lambda x: x.get('listorder') or 0, reverse=True)
+            displynames_dict = {item.get('fieldname'): item.get('displayname') if item.get('displayname') else item.get('fieldname')  for item in data if isinstance(item, dict)}
+            return displynames_dict
+        else:
+            print("Failed to fetch fieldname. HTTP Code:", response.getcode())
 
 def getlayersnames(apikey):
         url = f"https://api.costquest.com/fabric/layers"
@@ -229,35 +250,3 @@ def summarizefabricloc(geojson,selected_vintage,fieldlist,apikey):
         print(e)
 
 
-def populate_table_result(table_view, data):
-    """
-    Populate the tableResult QTableView with data.
-
-    :param table_view: The QTableView instance to populate.
-    :param data: A list of dictionaries or a list of lists containing the data to display.
-    """
-    # Create a model for the table
-    model = QStandardItemModel()
-
-    # Check if data is empty
-    if not data:
-        table_view.setModel(model)
-        return
-
-    # Set headers (assuming data is a list of dictionaries)
-    if isinstance(data[0], dict):
-        headers = list(data[0].keys())
-        model.setHorizontalHeaderLabels(headers)
-
-        # Populate the table with data
-        for row_data in data:
-            row_items = [QStandardItem(str(row_data[key])) for key in headers]
-            model.appendRow(row_items)
-    else:
-        # If data is a list of lists, populate directly
-        for row_data in data:
-            row_items = [QStandardItem(str(value)) for value in row_data]
-            model.appendRow(row_items)
-
-    # Set the model to the table view
-    table_view.setModel(model)

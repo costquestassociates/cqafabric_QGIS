@@ -24,7 +24,7 @@
 
 import os
 
-from qgis.PyQt import uic, QtCore
+from qgis.PyQt import uic, QtCore, Qt
 from qgis.PyQt import QtWidgets
 from qgis.PyQt.QtWidgets import QListWidget, QListWidgetItem
 from qgis.core import QgsMapLayerProxyModel, QgsVectorLayer, QgsProject, QgsMapLayer, QgsApplication
@@ -32,7 +32,7 @@ from qgis.gui import QgsMapLayerComboBox
 from qgis.utils import iface
 import urllib.request
 import json
-apikey = "cq-4601df7497bb9ce596c5eb8f197b90a8"
+from .generalfunctions import *
 # This loads your .ui file so that PyQt can populate your plugin with the elements from Qt Designer
 FORM_CLASS, _ = uic.loadUiType(os.path.join(
     os.path.dirname(__file__), 'retrievedata_dialog_base.ui'))
@@ -55,6 +55,17 @@ class RetrieveDataDialog(QtWidgets.QDialog, FORM_CLASS):
         self.selectSingleBtn.setAutoDefault(False)
         self.unselectSingleBtn.setAutoDefault(False)
         self.unselectAllBtn.setAutoDefault(False)
+        user_name = os.getlogin()
+        # Check whether the API file already exists 
+        global apikey
+        apikey_file = os.path.join(r"C:\Users",user_name, 'AppData\Roaming\QGIS', 'QGIS_CQAFabric.config')
+        if os.path.exists(apikey_file):
+            # Read the API key from the file
+            with open(apikey_file, 'r') as f:
+                apikey = f.read().strip()
+        else:
+            self.iface.messageBar().pushMessage("Error", "API key cannot be verified.", level=Qgis.Critical)
+            self.auth_dialog.show()
 
 
     def _initConnections(self):
@@ -97,10 +108,6 @@ class RetrieveDataDialog(QtWidgets.QDialog, FORM_CLASS):
             iface.setActiveLayer(layer)
 
 
-
-
-
-
     def _layerFieldChanged(self, label: str):
         self._featureLabel = label
         self.rename_items(self, self.availableFeaturesLw)
@@ -121,13 +128,17 @@ class RetrieveDataDialog(QtWidgets.QDialog, FORM_CLASS):
         self.selectedFeaturesLw.clear()
         vintage= self.comboBox_vintage.currentText()
         layer= self.comboBox_layer.currentText()
+        
 
-        list = RetrieveDataDialog.getavailablefields(vintage,layer)
+        list = RetrieveDataDialog.getavailablefields(vintage,layer,apikey)
+        displayname_dict = getfieldsdisplayname(vintage,layer,apikey)
 
         if list:
             # Populate the available features list widget with field names
             for field in list:
-                item = QListWidgetItem(field)  # Create item with text directly
+                displayname= displayname_dict[field]
+                item = QListWidgetItem(displayname)  # Create item with text directly
+                item.setData(QtCore.Qt.UserRole, field)
                 self.availableFeaturesLw.addItem(item)
         else:
             self.removeFeatures()
@@ -152,7 +163,7 @@ class RetrieveDataDialog(QtWidgets.QDialog, FORM_CLASS):
 
 
     
-    def getavailablefields(vintage:str,layer:str):
+    def getavailablefields(vintage:str,layer:str,apikey):
         url = f"https://costquest.azure-api.net/fabric/{vintage}/fields/{layer}"
 
         hdr ={
@@ -170,7 +181,8 @@ class RetrieveDataDialog(QtWidgets.QDialog, FORM_CLASS):
             # sort the data by listorder
             data.sort(key=lambda x: x.get('listorder') or 0, reverse=True)
             fieldnames = [
-                item.get('displayname') if item.get('displayname') else item.get('fieldname') 
+                #item.get('displayname') if item.get('displayname') else item.get('fieldname') 
+                item.get('fieldname')
                 for item in data if isinstance(item, dict)
             ]
             print("List of fieldname:", fieldnames)
@@ -185,11 +197,14 @@ class RetrieveDataDialog(QtWidgets.QDialog, FORM_CLASS):
     def rename_items(self, listWidget: QListWidget):
         vintage= self.comboBox_vintage.currentText()
         layer= self.comboBox_layer.currentText()
-
-        list = RetrieveDataDialog.getavailablefields(vintage,layer)
+        list = RetrieveDataDialog.getavailablefields(vintage,layer,apikey)
         listWidget.clear()
+        displayname_dict = getfieldsdisplayname(vintage,layer,apikey)
+
         for field in reversed(list):
-            item = QListWidgetItem(field)
+            displayname= displayname_dict[field]
+            item = QListWidgetItem(displayname)  # Create item with text directly
+            item.setData(QtCore.Qt.UserRole, field)
             listWidget.addItem(item)
 
     @staticmethod
@@ -203,9 +218,13 @@ class RetrieveDataDialog(QtWidgets.QDialog, FORM_CLASS):
         # via https://stackoverflow.com/questions/9713298/pyqt4-move-items-from-one-qlistwidget-to-another
         # sort rows in descending order in order to compensate shifting due to takeItem
         # this also applies to the other methods in this context
+        listWidget_b_temp = []
         for row in reversed(range(listWidget_a.count())):
-            listWidget_b.addItem(listWidget_a.takeItem(row))
-        listWidget_b.sortItems()
+            item = listWidget_a.takeItem(row)
+            listWidget_b_temp.append(item)
+        
+        for item in reversed(listWidget_b_temp):
+            listWidget_b.addItem(item)
 
         # force update, otherwise sometimes it took SECONDS, at least in 3.4
         # FIXME investigate reason and implement proper fix
@@ -222,7 +241,7 @@ class RetrieveDataDialog(QtWidgets.QDialog, FORM_CLASS):
         rows = sorted([index.row() for index in listWidget_a.selectedIndexes()], reverse=True)
         for row in rows:
             listWidget_b.addItem(listWidget_a.takeItem(row))
-        listWidget_b.sortItems()
+        #listWidget_b.sortItems()
 
         # force update, otherwise sometimes it took SECONDS, at least in 3.4
         # FIXME investigate reason and implement proper fix

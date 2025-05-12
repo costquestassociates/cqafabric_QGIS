@@ -498,7 +498,7 @@ color: rgb(0, 0, 255);</string>
   </widget>
   <widget class="QCheckBox" name="checkBox_addlocations">
    <property name="enabled">
-    <bool>true</bool>
+    <bool>false</bool>
    </property>
    <property name="geometry">
     <rect>
@@ -532,13 +532,26 @@ color: rgb(0, 0, 255);</string>
      <height>51</height>
     </rect>
    </property>
+   <property name="sizePolicy">
+    <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+     <horstretch>0</horstretch>
+     <verstretch>0</verstretch>
+    </sizepolicy>
+   </property>
+   <property name="font">
+    <font>
+     <pointsize>10</pointsize>
+     <weight>75</weight>
+     <bold>true</bold>
+    </font>
+   </property>
    <property name="styleSheet">
     <string notr="true">background-color: rgb(244, 239, 239);
 border-color: rgb(255, 170, 255);
 color: rgb(52, 116, 14);</string>
    </property>
    <property name="text">
-    <string/>
+    <string>Show</string>
    </property>
    <property name="icon">
     <iconset>

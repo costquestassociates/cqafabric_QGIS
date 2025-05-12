@@ -355,155 +355,246 @@ class CQAFabric:
 
             # if pushButton_AddTiles is clicked, add tiles to the map
             self.dlg.pushButton_AddTiles_S.clicked.connect(lambda: self.add_fabrictilessource())
-            data = [
-                {"Name": "Alice", "Age": 30, "City": "New York"},
-                {"Name": "Bob", "Age": 25, "City": "Los Angeles"},
-                {"Name": "Charlie", "Age": 35, "City": "Chicago"}
-            ]
-            self.dlg.populatetableBtn.clicked.connect(lambda: populate_table_result(self.dlg.tableResult, data))
+
+            # if populatetableBtn is clicked, show the table with the selected features
+            self.dlg.populatetableBtn.clicked.connect(lambda: self.populate_table_result())
 
 
                     
-                    
-
-
             # Run the dialog event loop
             result = self.dlg.exec_()
             # See if OK was pressed
             if result:
-                # Do something useful here - delete the line containing pass and
-                # substitute with your code.
-                layer = self.iface.activeLayer()
-                # Open attribute table of the active layer
-                if self.dlg.checkBox_selection.isChecked(): # Use only selected features
-                    selected_features = layer.selectedFeatures()
-                    self.iface.messageBar().pushMessage("Info", "Use only selected features", level=Qgis.Info)
-                else:   # Use all features
-                    layer.selectAll()
-                    selected_features = layer.selectedFeatures()
-                    self.iface.messageBar().pushMessage("Info", "Use all features", level=Qgis.Info)
-                if not selected_features:
-                        self.iface.messageBar().pushMessage("Info", "No features selected.", level=Qgis.Info)
-                        return False
-                selected_vintage = self.dlg.comboBox_vintage.currentText()  # Get the selected vintage from the combo box vintage
-                selected_layer = self.dlg.comboBox_layer.currentText()  # Get the selected layer from the combo box layer
-                Define_Layer=processing.run("native:saveselectedfeatures", {'INPUT':layer,'OUTPUT':'TEMPORARY_OUTPUT'})['OUTPUT']
-                    
-                ids= []  
-                    
-                vector_tile_layer =load_fabricvectortilelayer(selected_vintage,selected_layer,apikey)
-            
-                
-                feature_ids = [f.id() for f in Define_Layer.getFeatures()]  # Get all feature IDs
-                
-                for feature_id in feature_ids:
-                    Define_Layer.selectByIds([feature_id])
-                    box = Define_Layer.boundingBoxOfSelected()
-                    self.iface.mapCanvas().setExtent(box)
-                    self.iface.mapCanvas().refresh()
-                    geometry = Define_Layer.getGeometry(feature_id)
-                    context = QgsSelectionContext()
-                    canvas = self.iface.mapCanvas()
-                    context.setScale(canvas.scale())
-                    xform = QgsCoordinateTransform(Define_Layer.crs(), vector_tile_layer.crs(), QgsProject.instance())
-                    geometry.transform(xform)
-                    vector_tile_layer.selectByGeometry(geometry,context)
-                    if self.dlg.checkBox_addlocations.isChecked() and selected_layer != "locations":
-                        layer = QgsVectorLayer("Polygon?crs="+vector_tile_layer.crs().authid()+"&field=uuid:string(255)", f"FabricSelection_{selected_layer} - {selected_vintage}", "memory")
-                        layer.startEditing()
-                        for feature in vector_tile_layer.selectedFeatures():
-                            newfeature = QgsFeature()
-                            tilegeom=feature.geometry()
-                            newfeature.setGeometry(tilegeom)
-                            uuid=feature.attributes()[0]
-                            newfeature.setAttributes([uuid])
-                            layer.dataProvider().addFeatures([newfeature])
-                            
-                            ids.append(uuid)
-                        layer.commitChanges()
-                    else:
-                        for feature in vector_tile_layer.selectedFeatures(): 
-                            uuid=feature.attributes()[0]
-                            ids.append(uuid)
-                            
-                    # Create a new GeoJSON file with the UUIDs
-                    uuidjson_file = os.path.join(self.plugin_dir +"\outputs", "selected_uuids.json")
-                    # Create a new GeoJSON file with the UUIDs
-                    with open(uuidjson_file, "w") as f:
-                        json.dump(ids, f, indent=2)
-                    self.iface.messageBar().pushMessage("Success", "found " + str(len(ids)) + " ids", level=Qgis.Success)
-                    
-                    if self.dlg.checkBox_addlocations.isChecked() and selected_layer == "locations":
-                        try:    
-                                combined_data = bulk(uuidjson_file,['latitude','longitude'],selected_vintage,"locations",apikey)
-                                output_file = os.path.join(self.plugin_dir +"\outputs", "selected_locations.csv")
-                                with open(output_file, mode="w", newline="") as file:
-                                # Get all keys from the first inner dictionary (assuming all dictionaries have the same structure)
-                                    fieldnames = list(next(iter(combined_data.values())).keys())
-                                    writer = csv.DictWriter(file, fieldnames=fieldnames)
-                                    
-                                    # Write the header
-                                    writer.writeheader()
-                                    
-                                    # Write each inner dictionary as a row
-                                    for inner_dict in combined_data.values():
-                                        writer.writerow(inner_dict)
-                                self.iface.messageBar().pushMessage("Success", f"uuid information exported to {output_file}", level=Qgis.Success)
-                                
-                                # Convert the CSV file to a shapefile
-                                layer = processing.run("native:createpointslayerfromtable", {
-                                    'INPUT': output_file,
-                                    'XFIELD': 'longitude',
-                                    'YFIELD': 'latitude',
-                                    'ZFIELD': '',
-                                    'MFIELD': '',
-                                    'TARGET_CRS': QgsCoordinateReferenceSystem('EPSG:4326'),
-                                    'OUTPUT': 'TEMPORARY_OUTPUT'
-                                })['OUTPUT']
-
-                            
-                        except Exception as e:
-                            self.iface.messageBar().pushMessage("Error", f"An error occurred: {str(e)}", level=Qgis.Critical)
-                            return False
-                        
-                # Get the list of fields from selectedFeaturesLw list widget
-                selected_fields = []
-                for i in range(self.dlg.selectedFeaturesLw.count()):
-                    item = self.dlg.selectedFeaturesLw.item(i)
-                    selected_fields.append(item.text())
-               
-                combined_data = bulk(uuidjson_file,selected_fields,selected_vintage,selected_layer,apikey)
-                # Convert data to CSV file
-                csvoutput_file = os.path.join(self.plugin_dir +"\outputs", f"FabricSelection_{selected_layer} - {selected_vintage}.csv")
-                
-                with open(csvoutput_file, mode="w", newline="") as file:
-                    
-                # Get all keys from the first inner dictionary (assuming all dictionaries have the same structure)
-                    fieldnames = list(next(iter(combined_data.values())).keys())
-                    writer = csv.DictWriter(file, fieldnames=fieldnames)
-                    
-                    # Write the header
-                    writer.writeheader()
-                    
-                    # Write each inner dictionary as a row
-                    for inner_dict in combined_data.values():
-                        writer.writerow(inner_dict)
-
-                self.iface.messageBar().pushMessage("Success", f"Fabric data exported to {csvoutput_file}", level=Qgis.Success)
-                
-                # Add the CSV file to the map as delimited text layer
-                # Create a QgsDataSourceUri object
-                uri = "file:///{}?type={}&detectTypes={}&geomType={}".format(csvoutput_file, "csv", "yes", "none")
-            
-
-                # Create a new delimited text layer
-                delimited_layer = QgsVectorLayer(uri, f"FabricSelection_{selected_layer} - {selected_vintage}", "delimitedtext")
-                QgsProject.instance().addMapLayer(delimited_layer)
-                
                 if self.dlg.checkBox_addlocations.isChecked():
+                    layer = self.iface.activeLayer()
+                    # Open attribute table of the active layer
+                    if self.dlg.checkBox_selection.isChecked(): # Use only selected features
+                        selected_features = layer.selectedFeatures()
+                        self.iface.messageBar().pushMessage("Info", "Use only selected features", level=Qgis.Info)
+                    else:   # Use all features
+                        layer.selectAll()
+                        selected_features = layer.selectedFeatures()
+                        self.iface.messageBar().pushMessage("Info", "Use all features", level=Qgis.Info)
+                    if not selected_features:
+                            self.iface.messageBar().pushMessage("Info", "No features selected.", level=Qgis.Info)
+                            return False
+                    selected_vintage = self.dlg.comboBox_vintage.currentText()  # Get the selected vintage from the combo box vintage
+                    selected_layer = self.dlg.comboBox_layer.currentText()  # Get the selected layer from the combo box layer
+                    Define_Layer=processing.run("native:saveselectedfeatures", {'INPUT':layer,'OUTPUT':'TEMPORARY_OUTPUT'})['OUTPUT']
+                        
+                    ids= []  
+                        
+                    vector_tile_layer =load_fabricvectortilelayer(selected_vintage,selected_layer,apikey)
+            
+                
+                    feature_ids = [f.id() for f in Define_Layer.getFeatures()]  # Get all feature IDs
+                    for feature_id in feature_ids:
+                        Define_Layer.selectByIds([feature_id])
+                        box = Define_Layer.boundingBoxOfSelected()
+                        self.iface.mapCanvas().setExtent(box)
+                        self.iface.mapCanvas().refresh()
+                        geometry = Define_Layer.getGeometry(feature_id)
+                        context = QgsSelectionContext()
+                        canvas = self.iface.mapCanvas()
+                        context.setScale(canvas.scale())
+                        xform = QgsCoordinateTransform(Define_Layer.crs(), vector_tile_layer.crs(), QgsProject.instance())
+                        geometry.transform(xform)
+                        vector_tile_layer.selectByGeometry(geometry,context)
+                        if selected_layer != "locations":
+                            layer = QgsVectorLayer("Polygon?crs="+vector_tile_layer.crs().authid()+"&field=uuid:string(255)", f"FabricSelection_{selected_layer} - {selected_vintage}", "memory")
+                            layer.startEditing()
+                            for feature in vector_tile_layer.selectedFeatures():
+                                newfeature = QgsFeature()
+                                tilegeom=feature.geometry()
+                                newfeature.setGeometry(tilegeom)
+                                uuid=feature.attributes()[0]
+                                newfeature.setAttributes([uuid])
+                                layer.dataProvider().addFeatures([newfeature])
+                                
+                                ids.append(uuid)
+                            layer.commitChanges()
+                            # Create a new GeoJSON file with the UUIDs
+                            uuidjson_file = os.path.join(self.plugin_dir +"\outputs", "selected_uuids.json")
+                            # Create a new GeoJSON file with the UUIDs
+                            with open(uuidjson_file, "w") as f:
+                                json.dump(ids, f, indent=2)
+                        else:
+                            for feature in vector_tile_layer.selectedFeatures(): 
+                                uuid=feature.attributes()[0]
+                                ids.append(uuid)
+                                
+                            # Create a new GeoJSON file with the UUIDs
+                            uuidjson_file = os.path.join(self.plugin_dir +"\outputs", "selected_uuids.json")
+                            # Create a new GeoJSON file with the UUIDs
+                            with open(uuidjson_file, "w") as f:
+                                json.dump(ids, f, indent=2)
+                            try:    
+                                    combined_data = bulk(uuidjson_file,['latitude','longitude'],selected_vintage,"locations",apikey)
+                                    output_file = os.path.join(self.plugin_dir +"\outputs", "selected_locations.csv")
+                                    with open(output_file, mode="w", newline="") as file:
+                                    # Get all keys from the first inner dictionary (assuming all dictionaries have the same structure)
+                                        fieldnames = list(next(iter(combined_data.values())).keys())
+                                        writer = csv.DictWriter(file, fieldnames=fieldnames)
+                                        
+                                        # Write the header
+                                        writer.writeheader()
+                                        
+                                        # Write each inner dictionary as a row
+                                        for inner_dict in combined_data.values():
+                                            writer.writerow(inner_dict)
+                                    self.iface.messageBar().pushMessage("Success", f"uuid information exported to {output_file}", level=Qgis.Success)
+                                    
+                                    # Convert the CSV file to a shapefile
+                                    layer = processing.run("native:createpointslayerfromtable", {
+                                        'INPUT': output_file,
+                                        'XFIELD': 'longitude',
+                                        'YFIELD': 'latitude',
+                                        'ZFIELD': '',
+                                        'MFIELD': '',
+                                        'TARGET_CRS': QgsCoordinateReferenceSystem('EPSG:4326'),
+                                        'OUTPUT': 'TEMPORARY_OUTPUT'
+                                    })['OUTPUT']
+
+                                
+                            except Exception as e:
+                                self.iface.messageBar().pushMessage("Error", f"An error occurred: {str(e)}", level=Qgis.Critical)
+                                return False
+
+                    # Get the list of fields from selectedFeaturesLw list widget
+                    selected_fields = []
+                    for i in range(self.dlg.selectedFeaturesLw.count()):
+                        item = self.dlg.selectedFeaturesLw.item(i)
+                        retrieved_data = item.data(QtCore.Qt.UserRole)
+                        selected_fields.append(retrieved_data)
+                
+                    combined_data = bulk(uuidjson_file,selected_fields,selected_vintage,selected_layer,apikey)
+                    # Convert data to CSV file
+                    csvoutput_file = os.path.join(self.plugin_dir +"\outputs", f"FabricSelection_{selected_layer} - {selected_vintage}.csv")
+                    
+                    with open(csvoutput_file, mode="w", newline="") as file:
+                        
+                    # Get all keys from the first inner dictionary (assuming all dictionaries have the same structure)
+                        fieldnames = list(next(iter(combined_data.values())).keys())
+                        writer = csv.DictWriter(file, fieldnames=fieldnames)
+                        
+                        # Write the header
+                        writer.writeheader()
+                        
+                        # Write each inner dictionary as a row
+                        for inner_dict in combined_data.values():
+                            writer.writerow(inner_dict)
+
+                    self.iface.messageBar().pushMessage("Success", f"Fabric data exported to {csvoutput_file}", level=Qgis.Success)
+                
                     joinshp=processing.run("native:joinattributestable", {'INPUT':layer,'FIELD':'uuid','INPUT_2':csvoutput_file,'FIELD_2':'uuid','FIELDS_TO_COPY':[],'METHOD':1,'DISCARD_NONMATCHING':False,'PREFIX':'','OUTPUT':'TEMPORARY_OUTPUT'})['OUTPUT']
                     joinshp.setName(f"FabricSelection_{selected_layer} - {selected_vintage}")
                     QgsProject.instance().addMapLayer(joinshp)
+                else:
+                    self.dlg.close()
+
+  
+
+    def populate_table_result(self):           
+        # Do something useful here - delete the line containing pass and
+        # substitute with your code.
+        layer = self.iface.activeLayer()
+        # Open attribute table of the active layer
+        if self.dlg.checkBox_selection.isChecked(): # Use only selected features
+            selected_features = layer.selectedFeatures()
+            self.iface.messageBar().pushMessage("Info", "Use only selected features", level=Qgis.Info)
+        else:   # Use all features
+            layer.selectAll()
+            selected_features = layer.selectedFeatures()
+            self.iface.messageBar().pushMessage("Info", "Use all features", level=Qgis.Info)
+        if not selected_features:
+                self.iface.messageBar().pushMessage("Info", "No features selected.", level=Qgis.Info)
+                return False
+        selected_vintage = self.dlg.comboBox_vintage.currentText()  # Get the selected vintage from the combo box vintage
+        selected_layer = self.dlg.comboBox_layer.currentText()  # Get the selected layer from the combo box layer
+        Define_Layer=processing.run("native:saveselectedfeatures", {'INPUT':layer,'OUTPUT':'TEMPORARY_OUTPUT'})['OUTPUT']
+            
+        ids= []  
+            
+        vector_tile_layer =load_fabricvectortilelayer(selected_vintage,selected_layer,apikey)
+    
+        
+        feature_ids = [f.id() for f in Define_Layer.getFeatures()]  # Get all feature IDs
+        
+        for feature_id in feature_ids:
+            Define_Layer.selectByIds([feature_id])
+            box = Define_Layer.boundingBoxOfSelected()
+            self.iface.mapCanvas().setExtent(box)
+            self.iface.mapCanvas().refresh()
+            geometry = Define_Layer.getGeometry(feature_id)
+            context = QgsSelectionContext()
+            canvas = self.iface.mapCanvas()
+            context.setScale(canvas.scale())
+            xform = QgsCoordinateTransform(Define_Layer.crs(), vector_tile_layer.crs(), QgsProject.instance())
+            geometry.transform(xform)
+            vector_tile_layer.selectByGeometry(geometry,context)
+            for feature in vector_tile_layer.selectedFeatures(): 
+                uuid=feature.attributes()[0]
+                ids.append(uuid)
+                    
+            # Create a new GeoJSON file with the UUIDs
+            uuidjson_file = os.path.join(self.plugin_dir +"\outputs", "selected_uuids.json")
+            # Create a new GeoJSON file with the UUIDs
+            with open(uuidjson_file, "w") as f:
+                json.dump(ids, f, indent=2)
+            self.iface.messageBar().pushMessage("Success", "found " + str(len(ids)) + " ids", level=Qgis.Success)
+            
+        # Get the list of fields from selectedFeaturesLw list widget
+        selected_fields = []
+        for i in range(self.dlg.selectedFeaturesLw.count()):
+            item = self.dlg.selectedFeaturesLw.item(i)
+            retrieved_data = item.data(QtCore.Qt.UserRole)
+            selected_fields.append(retrieved_data)
+        
+        combined_data = bulk(uuidjson_file,selected_fields,selected_vintage,selected_layer,apikey)
+        data = list(combined_data.values())
+        
+        """
+        Populate the tableResult QTableView with data.
+
+        :param table_view: The QTableView instance to populate.
+        :param data: A list of dictionaries or a list of lists containing the data to display.
+        """
+        # Create a model for the table
+        model = QStandardItemModel()
+
+        # Check if data is empty
+        if not data:
+            self.dlg.tableResult.setModel(model)
+            return
+
+        # Set headers (assuming data is a list of dictionaries)
+        if isinstance(data[0], dict):
+            headers = list(data[0].keys())
+            displayname_dict = getfieldsdisplayname(selected_vintage,selected_layer,apikey)
+            headers_display = []
+            for r in headers:
+                headers_display.append(displayname_dict[r] if r in displayname_dict.keys() else r)  
+            model.setHorizontalHeaderLabels(headers_display)
+
+            # Populate the table with data
+            for row_data in data:
+                row_items = [QStandardItem(str(row_data[key])) for key in headers]
+                model.appendRow(row_items)
+        else:
+            # If data is a list of lists, populate directly
+            for row_data in data:
+                row_items = [QStandardItem(str(value)) for value in row_data]
+                model.appendRow(row_items)
+
+        # Set the model to the table view
+        self.dlg.tableResult.setModel(model)
+        # Set the column width to fit the content
+        for column in range(model.columnCount()):
+            self.dlg.tableResult.resizeColumnToContents(column)
+        # Set the row height to fit the content
+        for row in range(model.rowCount()):
+            self.dlg.tableResult.setRowHeight(row, 20)
+            
                 
 
 
