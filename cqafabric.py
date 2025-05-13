@@ -193,7 +193,7 @@ class CQAFabric:
         self.toolbar.addAction(self.actionAddFabricTiles)
         '''
         # Create action for opening the Retrieve data fields window
-        icon_path_2 = ':/plugins/cqafabric/icon2.png'
+        icon_path_2 = ':/plugins/cqafabric/icon1.png'
         icon2 = QIcon(icon_path_2)
         self.actionRetrieveData = QAction(icon2, self.tr("Retrieve Fabric data"))
         self.menu.addAction(self.actionRetrieveData)
@@ -202,7 +202,7 @@ class CQAFabric:
         self.toolbar.addAction(self.actionRetrieveData)
 
         # Create action for getting coordinates from mouse click in QGIS3 in a plugin
-        icon_path_3 = ':/plugins/cqafabric/icon3.png'
+        icon_path_3 = ':/plugins/cqafabric/icon2.png'
         icon3 = QIcon(icon_path_3)
         self.actionIdentifyData = QAction(icon3, self.tr("Identify Fabric data"))
         self.actionIdentifyData.setCheckable(True)
@@ -332,6 +332,7 @@ class CQAFabric:
             # Create the dialog with elements (after translation) and keep reference
             # Only create GUI ONCE in callback, so that it will only load when the plugin is started
             self.dlg = RetrieveDataDialog()
+            self.dlg.setFixedSize(self.dlg.size())
             #self.dlg.setWindowFlags(Qt.WindowStaysOnTopHint)
             vintages=load_vintages(apikey)
 
@@ -358,6 +359,8 @@ class CQAFabric:
 
             # if populatetableBtn is clicked, show the table with the selected features
             self.dlg.populatetableBtn.clicked.connect(lambda: self.populate_table_result())
+
+            self.dlg.summarizetableBtn.clicked.connect(lambda: self.summarize_table_result())
 
 
                     
@@ -594,12 +597,9 @@ class CQAFabric:
         # Set the row height to fit the content
         for row in range(model.rowCount()):
             self.dlg.tableResult.setRowHeight(row, 20)
-            
-                
 
-
-                
-
+    def summarize_table_result(self):
+        pass
 
     def add_fabrictiles(self):
         selected_vintage = self.dlg.comboBox_vintage.currentText()  # Get the selected vintage from the combo box vintage
@@ -805,7 +805,7 @@ class CQAFabric:
                 self.iface.messageBar().pushMessage("Info", "No features found at the clicked location.", level=Qgis.Info)
                     
         except:
-                self.iface.messageBar().pushMessage("Info", "Please activate a fabric vector tile layer", level=Qgis.Info)
+                self.iface.messageBar().pushMessage("Info", "Please activate a fabric vector tile layer in Layers Panel", level=Qgis.Info)
                 return False            
                         
 

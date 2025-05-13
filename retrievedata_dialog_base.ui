@@ -13,6 +13,12 @@
     <height>662</height>
    </rect>
   </property>
+  <property name="sizePolicy">
+   <sizepolicy hsizetype="Ignored" vsizetype="Ignored">
+    <horstretch>0</horstretch>
+    <verstretch>0</verstretch>
+   </sizepolicy>
+  </property>
   <property name="windowTitle">
    <string>Retrieve Fabric Data</string>
   </property>
@@ -498,7 +504,7 @@ color: rgb(0, 0, 255);</string>
   </widget>
   <widget class="QCheckBox" name="checkBox_addlocations">
    <property name="enabled">
-    <bool>false</bool>
+    <bool>true</bool>
    </property>
    <property name="geometry">
     <rect>
@@ -527,7 +533,7 @@ color: rgb(0, 0, 255);</string>
    <property name="geometry">
     <rect>
      <x>790</x>
-     <y>280</y>
+     <y>270</y>
      <width>81</width>
      <height>51</height>
     </rect>
@@ -564,6 +570,50 @@ color: rgb(52, 116, 14);</string>
     </size>
    </property>
   </widget>
+  <widget class="QPushButton" name="summarizetableBtn">
+   <property name="enabled">
+    <bool>true</bool>
+   </property>
+   <property name="geometry">
+    <rect>
+     <x>790</x>
+     <y>200</y>
+     <width>81</width>
+     <height>51</height>
+    </rect>
+   </property>
+   <property name="sizePolicy">
+    <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+     <horstretch>0</horstretch>
+     <verstretch>0</verstretch>
+    </sizepolicy>
+   </property>
+   <property name="font">
+    <font>
+     <pointsize>10</pointsize>
+     <weight>75</weight>
+     <bold>true</bold>
+    </font>
+   </property>
+   <property name="styleSheet">
+    <string notr="true">background-color: rgb(244, 239, 239);
+border-color: rgb(255, 170, 255);
+color: rgb(52, 116, 14);</string>
+   </property>
+   <property name="text">
+    <string>Summarize</string>
+   </property>
+   <property name="icon">
+    <iconset>
+     <normaloff>../nvdb/skriv_icon.png</normaloff>../nvdb/skriv_icon.png</iconset>
+   </property>
+   <property name="iconSize">
+    <size>
+     <width>32</width>
+     <height>32</height>
+    </size>
+   </property>
+  </widget>
   <zorder>tableResult</zorder>
   <zorder>groupBox_3</zorder>
   <zorder>groupBox</zorder>
@@ -572,6 +622,7 @@ color: rgb(52, 116, 14);</string>
   <zorder>label_layer_3</zorder>
   <zorder>checkBox_addlocations</zorder>
   <zorder>populatetableBtn</zorder>
+  <zorder>summarizetableBtn</zorder>
  </widget>
  <customwidgets>
   <customwidget>
