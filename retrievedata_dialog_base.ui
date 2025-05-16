@@ -132,6 +132,33 @@
      <bool>true</bool>
     </property>
    </widget>
+   <widget class="QCheckBox" name="checkBox_addlocations">
+    <property name="enabled">
+     <bool>true</bool>
+    </property>
+    <property name="geometry">
+     <rect>
+      <x>570</x>
+      <y>20</y>
+      <width>191</width>
+      <height>21</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <family>Arial</family>
+      <pointsize>8</pointsize>
+      <weight>50</weight>
+      <bold>false</bold>
+     </font>
+    </property>
+    <property name="text">
+     <string>Add Selection Fabric Data to Map?</string>
+    </property>
+    <property name="checked">
+     <bool>false</bool>
+    </property>
+   </widget>
   </widget>
   <widget class="QGroupBox" name="groupBox_3">
    <property name="geometry">
@@ -502,33 +529,6 @@ color: rgb(0, 0, 255);</string>
     <enum>QAbstractItemView::SelectRows</enum>
    </property>
   </widget>
-  <widget class="QCheckBox" name="checkBox_addlocations">
-   <property name="enabled">
-    <bool>true</bool>
-   </property>
-   <property name="geometry">
-    <rect>
-     <x>20</x>
-     <y>620</y>
-     <width>251</width>
-     <height>31</height>
-    </rect>
-   </property>
-   <property name="font">
-    <font>
-     <family>Arial</family>
-     <pointsize>8</pointsize>
-     <weight>50</weight>
-     <bold>false</bold>
-    </font>
-   </property>
-   <property name="text">
-    <string>Add Selection Fabric Data to Map?</string>
-   </property>
-   <property name="checked">
-    <bool>false</bool>
-   </property>
-  </widget>
   <widget class="QPushButton" name="populatetableBtn">
    <property name="geometry">
     <rect>
@@ -614,15 +614,31 @@ color: rgb(52, 116, 14);</string>
     </size>
    </property>
   </widget>
+  <widget class="QLineEdit" name="infoBox">
+   <property name="geometry">
+    <rect>
+     <x>20</x>
+     <y>630</y>
+     <width>671</width>
+     <height>20</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string/>
+   </property>
+   <property name="maxLength">
+    <number>32770</number>
+   </property>
+  </widget>
   <zorder>tableResult</zorder>
   <zorder>groupBox_3</zorder>
   <zorder>groupBox</zorder>
   <zorder>buttonBox</zorder>
   <zorder>mapVlayersCb</zorder>
   <zorder>label_layer_3</zorder>
-  <zorder>checkBox_addlocations</zorder>
   <zorder>populatetableBtn</zorder>
   <zorder>summarizetableBtn</zorder>
+  <zorder>infoBox</zorder>
  </widget>
  <customwidgets>
   <customwidget>
