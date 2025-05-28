@@ -1,0 +1,2 @@
+cd C:\Users\hchen\AppData\Roaming\QGIS\QGIS3\profiles\default\python\plugins\cqafabric
+pyrcc5 -o resources.py resources.qrc

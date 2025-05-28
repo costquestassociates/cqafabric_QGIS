@@ -274,7 +274,7 @@ class CQAFabric:
         global apikey_file
         global temp_dir
         global qgis_dir
-        qgisdir = os.path.join(r"C:\Users",user_name, 'AppData\Roaming\QGIS')
+        qgis_dir = os.path.join(r"C:\Users",user_name, 'AppData\Roaming\QGIS')
         temp_dir =  os.path.join(r"C:\Users",user_name, 'AppData\Roaming\QGIS\Temp')
         if not os.path.exists(temp_dir):
             os.makedirs(temp_dir)
