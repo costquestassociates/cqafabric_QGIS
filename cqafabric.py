@@ -36,6 +36,7 @@ from .cqafabric_dialog import CQAFabricDialog
 from .addfabrictiles_dialog import AddFabricTilesDialog
 from .retrievedata_dialog import RetrieveDataDialog
 from .identifydata_dialog import IdentifyDataDialog
+from .addresssearch_dialog import AddressSearchDialog
 import os.path
 import json
 import csv
@@ -182,6 +183,7 @@ class CQAFabric:
         # Add actions to the toolbar
         self.toolbar = self.iface.addToolBar(self.tr("&CQA Fabric"))
         self.toolbar.setObjectName('CQA Fabric')
+        self.toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
 
         icon_path = ':/plugins/cqafabric/icon.png'
         '''# Create action for opening the Add Fabric Tiles window
@@ -193,19 +195,23 @@ class CQAFabric:
         self.actionAddFabricTiles.triggered.connect(self.AddFabricTiles)
         self.toolbar.addAction(self.actionAddFabricTiles)
         '''
+
+        
+
+
         # Create action for opening the Retrieve data fields window
-        icon_path_2 = ':/plugins/cqafabric/icon1.png'
-        icon2 = QIcon(icon_path_2)
-        self.actionRetrieveData = QAction(icon2, self.tr("Retrieve Fabric data"))
+        icon_path_1 = ':/plugins/cqafabric/icon1.png'
+        icon2 = QIcon(icon_path_1)
+        self.actionRetrieveData = QAction(icon2, self.tr("Retrieve Fabric Data"))
         self.menu.addAction(self.actionRetrieveData)
         toolButtonMenu.addAction(self.actionRetrieveData)
         self.actionRetrieveData.triggered.connect(self.RetrieveData)
         self.toolbar.addAction(self.actionRetrieveData)
 
         # Create action for getting coordinates from mouse click in QGIS3 in a plugin
-        icon_path_3 = ':/plugins/cqafabric/icon2.png'
-        icon3 = QIcon(icon_path_3)
-        self.actionIdentifyData = QAction(icon3, self.tr("Identify Fabric data"))
+        icon_path_2 = ':/plugins/cqafabric/icon2.png'
+        icon3 = QIcon(icon_path_2)
+        self.actionIdentifyData = QAction(icon3, self.tr("Identify Fabric Data"))
         self.actionIdentifyData.setCheckable(True)
         self.menu.addAction(self.actionIdentifyData)
         toolButtonMenu.addAction(self.actionIdentifyData)
@@ -225,6 +231,17 @@ class CQAFabric:
 
         self.first_start = True
 
+        # Create action for address searching in QGIS3 in a plugin
+        icon_path_2 = ':/plugins/cqafabric/icon2.png'
+        icon3 = QIcon(icon_path_2)
+        self.actionAddressSearch = QAction(icon3, self.tr("Address Search"))
+        self.menu.addAction(self.actionAddressSearch)
+        toolButtonMenu.addAction(self.actionAddressSearch)
+        self.actionAddressSearch.triggered.connect(self.AddressSearch)
+        self.toolbar.addAction(self.actionAddressSearch)
+        
+
+
         # Add authentication window for user to input credentials
         self.auth_dialog = CQAFabricDialog()
         self.auth_dialog.setWindowTitle("CQA Fabric Authentication")
@@ -237,7 +254,7 @@ class CQAFabric:
         self.auth_dialog.setFixedSize(self.auth_dialog.size())
 
         # Add input fields for API key
-        self.auth_dialog.label_api_key = QLabel("API Key:")
+        self.auth_dialog.label_api_key = QLabel("Please enter your API key:")
         self.auth_dialog.lineEdit_api_key = QLineEdit()
         self.auth_dialog.lineEdit_api_key.setEchoMode(QLineEdit.Password)
 
@@ -255,17 +272,45 @@ class CQAFabric:
         user_name = os.getlogin()
         # Check whether the API file already exists 
         global apikey_file
-        apikey_file = os.path.join(r"C:\Users",user_name, 'AppData\Roaming\QGIS', 'QGIS_CQAFabric.config')
+        global temp_dir
+        global qgis_dir
+        qgisdir = os.path.join(r"C:\Users",user_name, 'AppData\Roaming\QGIS')
+        temp_dir =  os.path.join(r"C:\Users",user_name, 'AppData\Roaming\QGIS\Temp')
+        if not os.path.exists(temp_dir):
+            os.makedirs(temp_dir)
+        apikey_file = os.path.join(qgis_dir, 'QGIS_CQAFabric.config')
+
+        # Create action for validating the API key shwoing the text in the tool button
+        icon_path_3 = ':/plugins/cqafabric/icon3.png'
+        icon = QIcon(icon_path_3)
+        self.actionValidateAPIKey = QAction(icon, self.tr("Log In"))
+        self.menu.addAction(self.actionValidateAPIKey)
+        toolButtonMenu.addAction(self.actionValidateAPIKey)
+        # Add the action to the toolbar and show both icon and text
+        def handle_validate_api_key():
+            if self.actionValidateAPIKey.text() == self.tr("Log Out"):
+                self.remove_api_key()
+            else:
+                self.auth_dialog.show()
+        self.actionValidateAPIKey.triggered.connect(handle_validate_api_key)
+        self.toolbar.addAction(self.actionValidateAPIKey)
+
         if os.path.exists(apikey_file):
             # Read the API key from the file
             with open(apikey_file, 'r') as f:
                 global apikey
                 apikey = f.read().strip()
+            # enable the retrieve data button
+            self.actionRetrieveData.setEnabled(True)
+            self.actionIdentifyData.setEnabled(True)
+            self.actionValidateAPIKey.setText(self.tr("Log Out"))
+            
         else:
         # Show the authentication dialog
-            self.auth_dialog.show()
+            self.actionRetrieveData.setEnabled(False)
+            self.actionIdentifyData.setEnabled(False)
+            
         
-
     def save_api_key(self):
             """Save the API key entered by the user."""
             global apikey
@@ -276,11 +321,30 @@ class CQAFabric:
                 # Close the authentication dialog
                 self.auth_dialog.close()
                 self.iface.messageBar().pushMessage("Success", "API key saved successfully.", level=Qgis.Success)
+                # change the button text to "Log Out"
+                self.actionRetrieveData.setEnabled(True)
+                self.actionIdentifyData.setEnabled(True)
+                self.actionValidateAPIKey.setText(self.tr("Log Out"))
+                
             else:
                 self.iface.messageBar().pushMessage("Error", "API key cannot be verified.", level=Qgis.Critical)
                 self.auth_dialog.show()
+    
 
-
+    def remove_api_key(self):
+        if os.path.exists(apikey_file):
+            os.remove(apikey_file)
+            self.iface.messageBar().pushMessage("Success", "API key removed successfully.", level=Qgis.Success)
+        else:
+            self.iface.messageBar().pushMessage("Info", "API key file not found.", level=Qgis.Info)
+        
+        # Close the authentication dialog
+        self.actionRetrieveData.setEnabled(False)
+        self.actionIdentifyData.setEnabled(False)
+        self.actionValidateAPIKey.setText(self.tr("Log In"))
+        self.auth_dialog.show()
+        
+                
     def unload(self):
         """Remove the plugin's actions from the QGIS menu and toolbars."""
         if not self.menu:
@@ -412,7 +476,7 @@ class CQAFabric:
                                     ids.append(uuid)
                                 layer.commitChanges()
                                 # Create a new GeoJSON file with the UUIDs
-                                uuidjson_file = os.path.join(self.plugin_dir +"\outputs", "selected_uuids.json")
+                                uuidjson_file = os.path.join(temp_dir, "selected_uuids.json")
                                 # Create a new GeoJSON file with the UUIDs
                                 with open(uuidjson_file, "w") as f:
                                     json.dump(ids, f, indent=2)
@@ -422,13 +486,13 @@ class CQAFabric:
                                     ids.append(uuid)
                                     
                                 # Create a new GeoJSON file with the UUIDs
-                                uuidjson_file = os.path.join(self.plugin_dir +"\outputs", "selected_uuids.json")
+                                uuidjson_file = os.path.join(temp_dir, "selected_uuids.json")
                                 # Create a new GeoJSON file with the UUIDs
                                 with open(uuidjson_file, "w") as f:
                                     json.dump(ids, f, indent=2)
                                 try:    
                                         combined_data = bulk(uuidjson_file,['latitude','longitude'],selected_vintage,"locations",apikey)
-                                        output_file = os.path.join(self.plugin_dir +"\outputs", "selected_locations.csv")
+                                        output_file = os.path.join(temp_dir, "selected_locations.csv")
                                         with open(output_file, mode="w", newline="") as file:
                                         # Get all keys from the first inner dictionary (assuming all dictionaries have the same structure)
                                             fieldnames = list(next(iter(combined_data.values())).keys())
@@ -468,7 +532,7 @@ class CQAFabric:
                         combined_data = bulk(uuidjson_file,selected_fields,selected_vintage,selected_layer,apikey)
                         # Convert data to CSV file
                         DateStamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-                        csvoutput_file = os.path.join(self.plugin_dir +"\outputs", f"FabricSelection_{selected_layer} - {selected_vintage}_{DateStamp}.csv")
+                        csvoutput_file = os.path.join(temp_dir, f"FabricSelection_{selected_layer} - {selected_vintage}_{DateStamp}.csv")
                         
                         with open(csvoutput_file, mode="w", newline="") as file:
                             
@@ -484,6 +548,7 @@ class CQAFabric:
                                 writer.writerow(inner_dict)
 
                         self.iface.messageBar().pushMessage("Success", f"Fabric data exported to {csvoutput_file}", level=Qgis.Success)
+                        
                     
                         joinshp=processing.run("native:joinattributestable", {'INPUT':layer,'FIELD':'uuid','INPUT_2':csvoutput_file,'FIELD_2':'uuid','FIELDS_TO_COPY':[],'METHOD':1,'DISCARD_NONMATCHING':False,'PREFIX':'','OUTPUT':'TEMPORARY_OUTPUT'})['OUTPUT']
                         joinshp.setName(f"FabricSelection_{selected_layer} - {selected_vintage}")
@@ -493,7 +558,10 @@ class CQAFabric:
                 else:
                     self.dlg.infoBox.setText("Please select a define layer")
                     self.dlg.infoBox.setStyleSheet("color: red;")
+                     # Change label_layer_3 to red and bold
+                    self.dlg.label_layer_3.setStyleSheet("color: red; font-weight: bold;")
                     QApplication.processEvents()
+
 
     def change_selection(self):
         if len(self.dlg.mapVlayersCb.currentText())>0:
@@ -504,128 +572,146 @@ class CQAFabric:
         else:
             self.dlg.infoBox.setText("Please activate a boundary vector layer in Layers Panel.")
             self.dlg.infoBox.setStyleSheet("color: red;")
+            self.dlg.label_layer_3.setStyleSheet("color: red; font-weight: bold;")
+
 
     def populate_table_result(self):           
         # Do something useful here - delete the line containing pass and
         # substitute with your code.
         # Show a message while the data is being retrieved
-        
-        self.dlg.infoBox.setText("Please wait while the data is being retrieved...")
-        QApplication.processEvents()
         QgsVectorLayer = self.dlg.mapVlayersCb.currentLayer()
-        self.iface.setActiveLayer(QgsVectorLayer)
-        layer = self.iface.activeLayer()
-        
-        # Open attribute table of the active layer
-        if self.dlg.checkBox_selection.isChecked(): # Use only selected features
-            selected_features = layer.selectedFeatures()
-            self.dlg.infoBox.setText("Use only selected features in "+ self.dlg.mapVlayersCb.currentText())
-            QApplication.processEvents()
-        else:   # Use all features
-            layer.selectAll()
-            selected_features = layer.selectedFeatures()
-            self.dlg.infoBox.setText("Use all features in "+ self.dlg.mapVlayersCb.currentText())
-            QApplication.processEvents()
-        if not selected_features:
-            self.dlg.infoBox.setText("No features selected in "+ self.dlg.mapVlayersCb.currentText() + ". Please make selection.")
+        # Check if layer is valid
+        if not QgsVectorLayer:
+            self.dlg.infoBox.setText("Please select a define layer.")
             self.dlg.infoBox.setStyleSheet("color: red;")
-            QApplication.processEvents()
-        selected_vintage = self.dlg.comboBox_vintage.currentText()  # Get the selected vintage from the combo box vintage
-        selected_layer = self.dlg.comboBox_layer.currentText()  # Get the selected layer from the combo box layer
-        Define_Layer=processing.run("native:saveselectedfeatures", {'INPUT':layer,'OUTPUT':'TEMPORARY_OUTPUT'})['OUTPUT']
-            
-        ids= []  
-            
-        vector_tile_layer =load_fabricvectortilelayer(selected_vintage,selected_layer,apikey)
-    
-        
-        feature_ids = [f.id() for f in Define_Layer.getFeatures()]  # Get all feature IDs
-        
-        for feature_id in feature_ids:
-            Define_Layer.selectByIds([feature_id])
-            box = Define_Layer.boundingBoxOfSelected()
-            self.iface.mapCanvas().setExtent(box)
-            self.iface.mapCanvas().refresh()
-            geometry = Define_Layer.getGeometry(feature_id)
-            context = QgsSelectionContext()
-            canvas = self.iface.mapCanvas()
-            context.setScale(canvas.scale())
-            xform = QgsCoordinateTransform(Define_Layer.crs(), vector_tile_layer.crs(), QgsProject.instance())
-            geometry.transform(xform)
-            vector_tile_layer.selectByGeometry(geometry,context)
-            for feature in vector_tile_layer.selectedFeatures(): 
-                uuid=feature.attributes()[0]
-                ids.append(uuid)
-                    
-            # Create a new GeoJSON file with the UUIDs
-            uuidjson_file = os.path.join(self.plugin_dir +"\outputs", "selected_uuids.json")
-            # Create a new GeoJSON file with the UUIDs
-            with open(uuidjson_file, "w") as f:
-                json.dump(ids, f, indent=2)
-            self.dlg.infoBox.setText("Retrieving " + str(len(ids)) + " ids data ...")
-            QApplication.processEvents()
-            
-        # Get the list of fields from selectedFeaturesLw list widget
-        selected_fields = []
-        for i in range(self.dlg.selectedFeaturesLw.count()):
-            item = self.dlg.selectedFeaturesLw.item(i)
-            retrieved_data = item.data(QtCore.Qt.UserRole)
-            selected_fields.append(retrieved_data)
-        if len(selected_fields) == 0:
-            self.dlg.infoBox.setText("Please select at least one field to retrieve data.")
-            self.dlg.infoBox.setStyleSheet("color: red;")
+            # Change label_layer_3 to red and bold
+            self.dlg.label_layer_3.setStyleSheet("color: red; font-weight: bold;")
             QApplication.processEvents()
             return
         else:
-            combined_data = bulk(uuidjson_file,selected_fields,selected_vintage,selected_layer,apikey)
-            data = list(combined_data.values())
+            self.dlg.infoBox.setText("Please wait while the data is being retrieved...")
+            QApplication.processEvents()
             
-            """
-            Populate the tableResult QTableView with data.
-
-            :param table_view: The QTableView instance to populate.
-            :param data: A list of dictionaries or a list of lists containing the data to display.
-            """
-            # Create a model for the table
-            model = QStandardItemModel()
-
-            # Check if data is empty
-            if not data:
-                self.dlg.tableResult.setModel(model)
+            self.iface.setActiveLayer(QgsVectorLayer)
+            layer = self.iface.activeLayer()
+            
+            # Open attribute table of the active layer
+            if self.dlg.checkBox_selection.isChecked(): # Use only selected features
+                selected_features = layer.selectedFeatures()
+                self.dlg.infoBox.setText("Use only selected features in "+ self.dlg.mapVlayersCb.currentText())
+                QApplication.processEvents()
+            else:   # Use all features
+                layer.selectAll()
+                selected_features = layer.selectedFeatures()
+                self.dlg.infoBox.setText("Use all features in "+ self.dlg.mapVlayersCb.currentText())
+                QApplication.processEvents()
+            if not selected_features:
+                self.dlg.infoBox.setText("No features selected in "+ self.dlg.mapVlayersCb.currentText() + ". Please make selection.")
+                self.dlg.infoBox.setStyleSheet("color: red;")
+                QApplication.processEvents()
+            selected_vintage = self.dlg.comboBox_vintage.currentText()  # Get the selected vintage from the combo box vintage
+            selected_layer = self.dlg.comboBox_layer.currentText()  # Get the selected layer from the combo box layer
+            
+            Define_Layer=processing.run("native:saveselectedfeatures", {'INPUT':layer,'OUTPUT':'TEMPORARY_OUTPUT'})['OUTPUT']
+                
+            ids= []  
+                
+            vector_tile_layer =load_fabricvectortilelayer(selected_vintage,selected_layer,apikey)
+        
+            
+            feature_ids = [f.id() for f in Define_Layer.getFeatures()]  # Get all feature IDs
+            
+            for feature_id in feature_ids:
+                Define_Layer.selectByIds([feature_id])
+                box = Define_Layer.boundingBoxOfSelected()
+                self.iface.mapCanvas().setExtent(box)
+                self.iface.mapCanvas().refresh()
+                geometry = Define_Layer.getGeometry(feature_id)
+                context = QgsSelectionContext()
+                canvas = self.iface.mapCanvas()
+                context.setScale(canvas.scale())
+                xform = QgsCoordinateTransform(Define_Layer.crs(), vector_tile_layer.crs(), QgsProject.instance())
+                geometry.transform(xform)
+                vector_tile_layer.selectByGeometry(geometry,context)
+                for feature in vector_tile_layer.selectedFeatures(): 
+                    uuid=feature.attributes()[0]
+                    ids.append(uuid)
+                        
+                # Create a new GeoJSON file with the UUIDs
+                uuidjson_file = os.path.join(temp_dir, "selected_uuids.json")
+                # Create a new GeoJSON file with the UUIDs
+                with open(uuidjson_file, "w") as f:
+                    json.dump(ids, f, indent=2)
+                self.dlg.infoBox.setText("Retrieving " + str(len(ids)) + " ids data ...")
+                QApplication.processEvents()
+                
+            # Get the list of fields from selectedFeaturesLw list widget
+            selected_fields = []
+            for i in range(self.dlg.selectedFeaturesLw.count()):
+                item = self.dlg.selectedFeaturesLw.item(i)
+                retrieved_data = item.data(QtCore.Qt.UserRole)
+                selected_fields.append(retrieved_data)
+            if len(selected_fields) == 0:
+                self.dlg.infoBox.setText("Please select at least one field to retrieve data.")
+                self.dlg.infoBox.setStyleSheet("color: red;")
+                self.dlg.selectedLbl.setStyleSheet("color: red; font-weight: bold;")
+                QApplication.processEvents()
                 return
-
-            # Set headers (assuming data is a list of dictionaries)
-            if isinstance(data[0], dict):
-                headers = list(data[0].keys())
-                displayname_dict = getfieldsdisplayname(selected_vintage,selected_layer,apikey)
-                headers_display = []
-                for r in headers:
-                    headers_display.append(displayname_dict[r] if r in displayname_dict.keys() else r)  
-                model.setHorizontalHeaderLabels(headers_display)
-
-                # Populate the table with data
-                for row_data in data:
-                    row_items = [QStandardItem(str(row_data[key])) for key in headers]
-                    model.appendRow(row_items)
             else:
-                # If data is a list of lists, populate directly
-                for row_data in data:
-                    row_items = [QStandardItem(str(value)) for value in row_data]
-                    model.appendRow(row_items)
+                combined_data = bulk(uuidjson_file,selected_fields,selected_vintage,selected_layer,apikey)
+                data = list(combined_data.values())
+                
+                """
+                Populate the tableResult QTableView with data.
 
-            # Set the model to the table view
-            self.dlg.tableResult.setModel(model)
-            # Set the column width to fit the content
-            for column in range(model.columnCount()):
-                self.dlg.tableResult.resizeColumnToContents(column)
-            # Set the row height to fit the content
-            for row in range(model.rowCount()):
-                self.dlg.tableResult.setRowHeight(row, 20)
-            self.dlg.infoBox.setText(str(len(ids)) + " ids data retrieved successfully")
-            self.dlg.infoBox.setStyleSheet("color: green;")
+                :param table_view: The QTableView instance to populate.
+                :param data: A list of dictionaries or a list of lists containing the data to display.
+                """
+                # Create a model for the table
+                model = QStandardItemModel()
+
+                # Check if data is empty
+                if not data:
+                    self.dlg.tableResult.setModel(model)
+                    return
+
+                self.SetDataModel(model, data,selected_vintage,selected_layer)
+
+                # Set the model to the table view
+                self.dlg.tableResult.setModel(model)
+                # Set the column width to fit the content
+                for column in range(model.columnCount()):
+                    self.dlg.tableResult.resizeColumnToContents(column)
+                # Set the row height to fit the content
+                for row in range(model.rowCount()):
+                    self.dlg.tableResult.setRowHeight(row, 20)
+                self.dlg.infoBox.setText(str(len(ids)) + " ids data retrieved successfully")
+                self.dlg.infoBox.setStyleSheet("color: green;")
+
+
+    def SetDataModel(self, model, data,selected_vintage,selected_layer):
+        if isinstance(data[0], dict):
+            headers = list(data[0].keys())
+            displayname_dict = getfieldsdisplayname(selected_vintage,selected_layer,apikey)
+            headers_display = []
+            for r in headers:
+                headers_display.append(displayname_dict[r] if r in displayname_dict.keys() else r)  
+            model.setHorizontalHeaderLabels(headers_display)
+
+            # Populate the table with data
+            for row_data in data:
+                row_items = [QStandardItem(str(row_data[key])) for key in headers]
+                model.appendRow(row_items)
+        else:
+            # If data is a list of lists, populate directly
+            for row_data in data:
+                row_items = [QStandardItem(str(value)) for value in row_data]
+                model.appendRow(row_items)
+    
 
     def summarize_table_result(self):
         pass
+
 
     def add_fabrictiles(self):
         self.dlg.infoBox.setText("Please wait while the vector tile layer is added to the map...")
@@ -841,27 +927,73 @@ class CQAFabric:
         except:
                 self.iface.messageBar().pushMessage("Info", "Please activate a fabric vector tile layer in Layers Panel", level=Qgis.Info)
                 return False            
-                        
 
-    def run(self):
-        """Run method that performs all the real work"""
 
-        # Create the dialog with elements (after translation) and keep reference
-        # Only create GUI ONCE in callback, so that it will only load when the plugin is started
-        if self.first_start == True:
-            self.first_start = False
-            self.dlg = CQAFabricDialog()
+    def AddressSearch(self):
+        self.dlg = AddressSearchDialog()
+        self.dlg.setFixedSize(self.dlg.size())
 
-        # show the dialog
+        # Get the vintages from the API
+        vintages=load_vintages(apikey)
+        layer_list = vintages
+        self.dlg.comboBox_vintage.clear()
+        self.dlg.comboBox_vintage.addItems(layer_list)
         self.dlg.show()
-        # Run the dialog event loop
-        result = self.dlg.exec_()
-        # See if OK was pressed
-        if result:
-            # Do something useful here - delete the line containing pass and
-            # substitute with your code.
-            pass
-    
+
+        # if populatetableBtn is clicked, show the table with the selected features
+        self.dlg.showfabricBtn.clicked.connect(lambda: self.show_geocode_fabric())
+
+
+    def show_geocode_fabric(self):
+        if self.dlg.comboBox_type.currentText()== "Address":
+            self.dlg.infoBox.setText("Searching for address: "+ self.dlg.infoBox_input.text())
+
+
+            data = geocodeautocomplete(apikey, self.dlg.infoBox_input.text())
+            if data:
+                # Get the selected vintage from the combo box vintage
+                selected_vintage = self.dlg.comboBox_vintage.currentText()  
+                selected_layer = "locations"
+                for key, value in data.items():
+                    if key == "features":
+                        for item in value:
+                            coordinates =value[0]['geometry']['coordinates']
+                            address_label = value[0]['properties']['label']
+                self.dlg.infoBox.setText(address_label + ": "+str(coordinates))
+                self.dlg.infoBox.setStyleSheet("color: green;")
+
+                coordinates = [{
+                    "latitude": coordinates[1],
+                    "longitude": coordinates[0]
+                    }]
+                result = locatefabric(apikey, selected_vintage, coordinates)
+                if result:
+                    location_id = [item.get('location_id') for item in result if isinstance(item, dict)][0]
+                    uuid = translatefabric(apikey, selected_vintage, location_id, None, None)
+                    data = individualdata(selected_vintage, selected_layer, apikey, uuid)
+                    # display the data in a QTableView
+                    model = QStandardItemModel()
+                    headers = list(data.keys())
+                    displayname_dict = getfieldsdisplayname(selected_vintage,selected_layer,apikey)
+                    headers_display = []
+                    for r in headers:
+                        headers_display.append(displayname_dict[r] if r in displayname_dict.keys() else r)
+                    model.setHorizontalHeaderLabels(headers_display)
+                    # Populate the table with data
+                    row_items = [QStandardItem(str(data[key])) for key in headers]
+                    model.appendRow(row_items)
+                    self.dlg.tableResult_location.setModel(model)
+                    # Set the column width to fit the content
+                    for column in range(model.columnCount()):
+                        self.dlg.tableResult_location.resizeColumnToContents(column) 
+
+
+            else:
+                self.dlg.infoBox.setText("No data found for the given address.")
+                self.dlg.infoBox.setStyleSheet("color: red;")
+        elif self.dlg.comboBox_type.currentText()== "Coordinates":
+            self.dlg.infoBox.setText("Searching for Coordinates: "+ self.dlg.infoBox_input.text())
+
 
     def IdentifyData_dlg(self):   
 
@@ -901,8 +1033,29 @@ class CQAFabric:
         else:
             self.dlg.close()
             # if this action dialog is closed, deactivate the action        
-      
+
+
 '''
+    def run(self):
+        """Run method that performs all the real work"""
+
+        # Create the dialog with elements (after translation) and keep reference
+        # Only create GUI ONCE in callback, so that it will only load when the plugin is started
+        if self.first_start == True:
+            self.first_start = False
+            self.dlg = CQAFabricDialog()
+
+        # show the dialog
+        self.dlg.show()
+        # Run the dialog event loop
+        result = self.dlg.exec_()
+        # See if OK was pressed
+        if result:
+            # Do something useful here - delete the line containing pass and
+            # substitute with your code.
+            pass
+    
+
     def IdentifyData_1(self):  
         # get the current active layer every time when the active layer is changed
         

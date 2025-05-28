@@ -106,6 +106,7 @@ class RetrieveDataDialog(QtWidgets.QDialog, FORM_CLASS):
             self._layer = layer
             self.layerChanged.emit(self._layer)
             iface.setActiveLayer(layer)
+            self.label_layer_3.setStyleSheet("color: black; font-weight: bold;")
 
 
     def _layerFieldChanged(self, label: str):
@@ -146,11 +147,13 @@ class RetrieveDataDialog(QtWidgets.QDialog, FORM_CLASS):
     def move_all_to_selection(self):
         """Moves *all* available Features into selection."""
         self.move_all_items(self.availableFeaturesLw, self.selectedFeaturesLw)
+        self.selectedLbl.setStyleSheet("color: black; font-weight: bold;")
 
 
     def move_selected_to_selection(self):
         """Moves all *selected* available Features into selection."""
         self.move_selected_items(self.availableFeaturesLw, self.selectedFeaturesLw)
+        self.selectedLbl.setStyleSheet("color: black; font-weight: bold;")
 
 
     def remove_all_from_selection(self):

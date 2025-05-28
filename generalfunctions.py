@@ -177,7 +177,8 @@ def getfieldsinfo(vintage:str,layer:str,apikey):
 
         else:
             print("Failed to fetch fields information. HTTP Code:", response.getcode())
-            
+
+
 def getfieldsdisplayname(vintage:str,layer:str,apikey):   
         url = f"https://costquest.azure-api.net/fabric/{vintage}/fields/{layer}"
 
@@ -199,6 +200,7 @@ def getfieldsdisplayname(vintage:str,layer:str,apikey):
             return displynames_dict
         else:
             print("Failed to fetch fieldname. HTTP Code:", response.getcode())
+
 
 def getlayersnames(apikey):
         url = f"https://api.costquest.com/fabric/layers"
@@ -250,3 +252,137 @@ def summarizefabricloc(geojson,selected_vintage,fieldlist,apikey):
         print(e)
 
 
+def geocodeautocomplete(apikey, address):
+    try:
+        url = f"https://api.costquest.com/geocode/autocomplete?text={address}"
+
+        hdr ={
+        # Request headers
+        'Cache-Control': 'no-cache',
+        'apikey': apikey,
+        }
+
+        req = urllib.request.Request(url, headers=hdr)
+
+        req.get_method = lambda: 'GET'
+        response = urllib.request.urlopen(req)
+        if response.getcode() == 200:
+            data = json.loads(response.read())
+            return data
+        else:
+            print("Failed to fetch address. HTTP Code:", response.getcode())
+            return None   
+    except Exception as e:
+        print(e)
+        return None
+    
+
+def geocodestructured(apikey, address, city, state,  zipcode):
+    try:
+        url = f"https://api.costquest.com/geocode/search/structured?address={address}&locality={city}&region={state}&postalcode={zipcode}".replace(" ", "%20")
+
+        hdr ={
+        # Request headers
+        'Cache-Control': 'no-cache',
+        'apikey': apikey,
+        }
+
+        req = urllib.request.Request(url, headers=hdr)
+
+        req.get_method = lambda: 'GET'
+        response = urllib.request.urlopen(req)
+        if response.getcode() == 200:
+            data = json.loads(response.read())
+            return data
+        else:
+            print("Failed to fetch address. HTTP Code:", response.getcode())
+            return None   
+    except Exception as e:
+        print(e)
+        return None
+
+
+def locatefabric(apikey, vintage, data):
+    ''' example: 
+    data = [{
+    "latitude": 36.66057141,
+    "longitude": -80.92493726,
+    "sourcekey": 31729768
+    }, {
+    "latitude": 36.65604364,
+    "longitude": -80.92737851,
+    "sourcekey": 31730797
+    }]
+    '''
+    try:
+        url = f"https://api.costquest.com/fabricext/{vintage}/locate"
+
+        hdr ={
+        # Request headers
+        'Cache-Control': 'no-cache',
+        'apikey': apikey,
+        }
+
+        data = json.dumps(data)
+        req = urllib.request.Request(url, headers=hdr, data = bytes(data.encode("utf-8")))
+
+        req.get_method = lambda: 'POST'
+        response = urllib.request.urlopen(req)
+        if response.getcode() == 200:
+            result = json.loads(response.read())
+            return result
+        else:
+            print("Failed to fetch address. HTTP Code:", response.getcode())
+            return None   
+    except Exception as e:
+        print(e)
+        return None
+    
+    '''example result = [{
+        "latitude": 36.66057141,
+        "distancem": 0,
+        "longitude": -80.92493726,
+        "matchtype": "FootprintParcel",
+        "sourcekey": "31729768",
+        "location_id": 1000009896
+    }, {
+        "latitude": 36.65604364,
+        "distancem": 0,
+        "longitude": -80.92737851,
+        "matchtype": "FootprintParcel",
+        "sourcekey": "31730797",
+        "location_id": 1000008779
+    }'''
+
+def translatefabric(apikey, vintage, id, src, dest):
+    if not src:
+        src= "location_id"
+    if not dest:
+        dest= "uuid"
+    try:
+        url = f"https://api.costquest.com/fabricext/{vintage}/translate?id={id}&src={src}&dst={dest}"
+
+        hdr ={
+        # Request headers
+        'Cache-Control': 'no-cache',
+        'apikey': apikey,
+        }
+
+        req = urllib.request.Request(url, headers=hdr)
+
+        req.get_method = lambda: 'GET'
+        response = urllib.request.urlopen(req)
+        if response.getcode() == 200:
+            result = json.loads(response.read())
+            return result
+        else:
+            print("Failed to fetch address. HTTP Code:", response.getcode())
+            return None   
+    except Exception as e:
+        print(e)
+        return None
+    '''
+    [{
+    "uuid": "affc4405-eb13-41cf-afa4-2b5142b95338",
+    "location_id": 1340235422
+    }]'''
