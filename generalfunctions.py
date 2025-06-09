@@ -254,6 +254,8 @@ def summarizefabricloc(geojson,selected_vintage,fieldlist,apikey):
 
 def geocodeautocomplete(apikey, address):
     try:
+        # replace spaces with %20 for URL encoding
+        address = address.replace(" ", "%20")
         url = f"https://api.costquest.com/geocode/autocomplete?text={address}"
 
         hdr ={

@@ -954,38 +954,49 @@ class CQAFabric:
                 # Get the selected vintage from the combo box vintage
                 selected_vintage = self.dlg.comboBox_vintage.currentText()  
                 selected_layer = "locations"
+                model = QStandardItemModel()
+                headers = None
+                self.dlg.infoBox.setText("" + str(len(data)) + " locations found for the given address.")
+                self.dlg.infoBox.setStyleSheet("color: green;")
                 for key, value in data.items():
+                    coordinates = None
+                    address_label = None
                     if key == "features":
                         for item in value:
-                            coordinates =value[0]['geometry']['coordinates']
-                            address_label = value[0]['properties']['label']
-                self.dlg.infoBox.setText(address_label + ": "+str(coordinates))
-                self.dlg.infoBox.setStyleSheet("color: green;")
+                            coordinates =item['geometry']['coordinates']
+                            address_label = item['properties']['label']
+                             
 
-                coordinates = [{
-                    "latitude": coordinates[1],
-                    "longitude": coordinates[0]
-                    }]
-                result = locatefabric(apikey, selected_vintage, coordinates)
-                if result:
-                    location_id = [item.get('location_id') for item in result if isinstance(item, dict)][0]
-                    uuid = translatefabric(apikey, selected_vintage, location_id, None, None)
-                    data = individualdata(selected_vintage, selected_layer, apikey, uuid)
-                    # display the data in a QTableView
-                    model = QStandardItemModel()
-                    headers = list(data.keys())
-                    displayname_dict = getfieldsdisplayname(selected_vintage,selected_layer,apikey)
-                    headers_display = []
-                    for r in headers:
-                        headers_display.append(displayname_dict[r] if r in displayname_dict.keys() else r)
-                    model.setHorizontalHeaderLabels(headers_display)
-                    # Populate the table with data
-                    row_items = [QStandardItem(str(data[key])) for key in headers]
-                    model.appendRow(row_items)
-                    self.dlg.tableResult_location.setModel(model)
-                    # Set the column width to fit the content
-                    for column in range(model.columnCount()):
-                        self.dlg.tableResult_location.resizeColumnToContents(column) 
+                            coordinates_data = [{
+                                "latitude": coordinates[1],
+                                "longitude": coordinates[0]
+                                }]
+                            data_1 = locatefabric(apikey, selected_vintage, coordinates_data)
+                            
+                            if data_1:
+                                location_id = [item.get('location_id') for item in data_1 if isinstance(item, dict)][0]
+                                if location_id:
+                                    data_2 = translatefabric(apikey, selected_vintage, location_id, None, None)
+                                    uuid = [item.get('uuid') for item in data_2 if isinstance(item, dict)][0]
+                                    data_3 = individualdata(selected_vintage, selected_layer, apikey, uuid)
+                                    # display the data in a QTableView
+                                    if not headers:
+                                        headers= list(data_3.keys())
+                                        displayname_dict = getfieldsdisplayname(selected_vintage,selected_layer,apikey)
+                                        headers_display = []
+                                        for r in headers:
+                                            headers_display.append(displayname_dict[r] if r in displayname_dict.keys() else r)
+                                            #sort headers_display based on the order of displayname_dict.values()
+                                            headers_display.sort(key=lambda x: displayname_dict.get(x, 9999))
+                                        model.setHorizontalHeaderLabels(headers_display)
+                                    # Populate the table with data
+                                    row_items = [QStandardItem(str(data_3[key])) for key in headers]
+                                    model.appendRow(row_items)
+                self.dlg.tableResult_location.setModel(model)
+                # Set the column width to fit the content
+                for column in range(model.columnCount()):
+                    self.dlg.tableResult_location.resizeColumnToContents(column)
+                    # Set the row height to fit the content
 
 
             else:
