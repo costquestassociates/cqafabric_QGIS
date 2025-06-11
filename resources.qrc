@@ -11,4 +11,7 @@
     <qresource prefix="/plugins/cqafabric" >
         <file>icon3.png</file>
     </qresource>
+        <qresource prefix="/plugins/cqafabric" >
+        <file>icon4.png</file>
+    </qresource>
 </RCC>

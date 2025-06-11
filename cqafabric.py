@@ -232,8 +232,8 @@ class CQAFabric:
         self.first_start = True
 
         # Create action for address searching in QGIS3 in a plugin
-        icon_path_2 = ':/plugins/cqafabric/icon2.png'
-        icon3 = QIcon(icon_path_2)
+        icon_path_4 = ':/plugins/cqafabric/icon4.png'
+        icon3 = QIcon(icon_path_4)
         self.actionAddressSearch = QAction(icon3, self.tr("Address Search"))
         self.menu.addAction(self.actionAddressSearch)
         toolButtonMenu.addAction(self.actionAddressSearch)
@@ -280,7 +280,7 @@ class CQAFabric:
             os.makedirs(temp_dir)
         apikey_file = os.path.join(qgis_dir, 'QGIS_CQAFabric.config')
 
-        # Create action for validating the API key shwoing the text in the tool button
+        # Create action for validating the API key showing the text in the tool button
         icon_path_3 = ':/plugins/cqafabric/icon3.png'
         icon = QIcon(icon_path_3)
         self.actionValidateAPIKey = QAction(icon, self.tr("Log In"))
