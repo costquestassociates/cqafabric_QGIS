@@ -185,9 +185,9 @@ class CQAFabric:
         self.toolbar.setObjectName('CQA Fabric')
         self.toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
 
-        icon_path = ':/plugins/cqafabric/icon.png'
+        icon_path = ':/plugins/cqafabric/icons/icon.png'
         '''# Create action for opening the Add Fabric Tiles window
-        icon_path_1 = ':/plugins/cqafabric/icon1.png'
+        icon_path_1 = ':/plugins/cqafabric/icons/icon1.png'
         icon1 = QIcon(icon_path_1)
         self.actionAddFabricTiles = QAction(icon1, self.tr("Add Fabric Tiles"))
         self.menu.addAction(self.actionAddFabricTiles)
@@ -200,7 +200,7 @@ class CQAFabric:
 
 
         # Create action for opening the Retrieve data fields window
-        icon_path_1 = ':/plugins/cqafabric/icon1.png'
+        icon_path_1 = ':/plugins/cqafabric/icons/icon1.png'
         icon2 = QIcon(icon_path_1)
         self.actionRetrieveData = QAction(icon2, self.tr("Retrieve Fabric Data"))
         self.menu.addAction(self.actionRetrieveData)
@@ -209,7 +209,7 @@ class CQAFabric:
         self.toolbar.addAction(self.actionRetrieveData)
 
         # Create action for getting coordinates from mouse click in QGIS3 in a plugin
-        icon_path_2 = ':/plugins/cqafabric/icon2.png'
+        icon_path_2 = ':/plugins/cqafabric/icons/icon2.png'
         icon3 = QIcon(icon_path_2)
         self.actionIdentifyData = QAction(icon3, self.tr("Identify Fabric Data"))
         self.actionIdentifyData.setCheckable(True)
@@ -232,7 +232,7 @@ class CQAFabric:
         self.first_start = True
 
         # Create action for address searching in QGIS3 in a plugin
-        icon_path_4 = ':/plugins/cqafabric/icon4.png'
+        icon_path_4 = ':/plugins/cqafabric/icons/icon4.png'
         icon3 = QIcon(icon_path_4)
         self.actionAddressSearch = QAction(icon3, self.tr("Address Search"))
         self.menu.addAction(self.actionAddressSearch)
@@ -281,7 +281,7 @@ class CQAFabric:
         apikey_file = os.path.join(qgis_dir, 'QGIS_CQAFabric.config')
 
         # Create action for validating the API key showing the text in the tool button
-        icon_path_3 = ':/plugins/cqafabric/icon3.png'
+        icon_path_3 = ':/plugins/cqafabric/icons/icon3.png'
         icon = QIcon(icon_path_3)
         self.actionValidateAPIKey = QAction(icon, self.tr("Log In"))
         self.menu.addAction(self.actionValidateAPIKey)
