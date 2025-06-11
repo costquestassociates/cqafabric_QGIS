@@ -1,42 +1,46 @@
-<html>
-<body>
-<h3>Plugin Builder Results</h3>
+[![GitHub release](https://img.shields.io/github/v/release/hchen-cqa/cqafabric_QGIS)](https://github.com/hchen-cqa/cqafabric_QGIS/releases)
+<h1>cqafabric</h1>
 
-Congratulations! You just built a plugin for QGIS!<br/><br />
+&nbsp;&nbsp;&nbsp;&nbsp;![qgis2web](icons/Fabric-3_CircleBG_Patina-100.png)
 
-<div id='help' style='font-size:.9em;'>
-Your plugin <b>CQAFabric</b> was created in:<br>
-&nbsp;&nbsp;<b>C:\Users\hchen\AppData\Roaming\QGIS\QGIS3\profiles\default\python\plugins\cqafabric</b>
-<p>
-Your QGIS plugin directory is located at:<br>
-&nbsp;&nbsp;<b>C:/Users/hchen/AppData/Roaming/QGIS/QGIS3/profiles/default/python/plugins</b>
-<p>
-<h3>What's Next</h3>
-<ol>
-    <li>If resources.py is not present in your plugin directory, compile the resources file using pyrcc5 (simply use <b>pb_tool</b> or <b>make</b> if you have automake)
-    <li>Optionally, test the generated sources using <b>make test</b> (or run tests from your IDE)
-    <li>Copy the entire directory containing your new plugin to the QGIS plugin directory (see Notes below)
-    <li>Test the plugin by enabling it in the QGIS plugin manager
-    <li>Customize it by editing the implementation file <b>cqafabric.py</b>
-    <li>Create your own custom icon, replacing the default <b>icon.png</b>
-    <li>Modify your user interface by opening <b>cqafabric_dialog_base.ui</b> in Qt Designer
-</ol>
-Notes:
+QGIS plugin to use CQA Fabric APIs.</br>
+    ![image](https://github.com/user-attachments/assets/7bbe4da7-930d-4ffb-a378-6592cff82b0c)
+    </br>
+    <li><b>Retrieve Fabric Data</b><br>
+    Retrieve fabric attribute/geometry by vintage and layer. </br>
+    ![image](https://github.com/user-attachments/assets/63f48f92-2eb0-4d85-b6d4-4fbc69c519bd)
+    </br>
+    </br>
+    </li>
+    <li><b>Identify Fabric Data</b><br>
+    Identify fabric location/footprint/parcel by clicking feature.</br>
+    ![image](https://github.com/user-attachments/assets/6a96fbdd-0bc7-41ec-a5f4-b1f77d503b61)
+    </br>
+    </br>
+    </li>
+    <li><b>Address Search</b><br>
+    Get fabric location by address/coordinate.</br>
+    ![image](https://github.com/user-attachments/assets/0f1c8c75-3d6d-4892-88b3-737a5e39591f)
+    </br>
+    </br></li>
+    <li><b>User Authentication</b><br>
+    Use API Key to access CQA Fabric APIs.</br>
+    ![image](https://github.com/user-attachments/assets/ecd1a19d-307d-49f8-a88f-2af26af524d5)
+    </br>
+    </br></li>
+
+
+<h2>Installation</h2>
 <ul>
-    <li>You can use <b>pb_tool</b> to compile, deploy, and manage your plugin. Tweak the <i>pb_tool.cfg</i> file included with your plugin as you add files. Install <b>pb_tool</b> using 
-        <i>pip</i> or <i>easy_install</i>. See <b>http://loc8.cc/pb_tool</b> for more information.
-    <li>You can also use the <b>Makefile</b> to compile and deploy when you
-        make changes. This requires GNU make (gmake). The Makefile is ready to use, however you 
-        will have to edit it to add addional Python source files, dialogs, and translations.
+    <li>In QGIS, select <code>Plugins > Manage and Install Plugins...</code></li>
+    <li>Find <code>cqafabric</code></li>
 </ul>
-</div>
-<div style='font-size:.9em;'>
-<p>
-For information on writing PyQGIS code, see <b>http://loc8.cc/pyqgis_resources</b> for a list of resources.
-</p>
-</div>
-<p>
-&copy;2011-2019 GeoApt LLC - geoapt.com 
-</p>
-</body>
-</html>
+<p>or:</p>
+<ul>
+    <li><a href="https://github.com/hchen-cqa/cqafabric_QGIS/archive/refs/heads/main.zip" target="_blank">Download</a> master repository from github</li>
+	<li>In QGIS, open <code>Plugins &gt; Manage and Install Plugins... &gt; Install from ZIP</code></li>	
+				
+</ul>
+
+
+
