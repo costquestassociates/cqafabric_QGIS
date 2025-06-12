@@ -303,12 +303,14 @@ class CQAFabric:
             # enable the retrieve data button
             self.actionRetrieveData.setEnabled(True)
             self.actionIdentifyData.setEnabled(True)
+            self.actionAddressSearch.setEnabled(True)
             self.actionValidateAPIKey.setText(self.tr("Log Out"))
             
         else:
         # Show the authentication dialog
             self.actionRetrieveData.setEnabled(False)
             self.actionIdentifyData.setEnabled(False)
+            self.actionAddressSearch.setEnabled(False)
             
         
     def save_api_key(self):
@@ -324,6 +326,7 @@ class CQAFabric:
                 # change the button text to "Log Out"
                 self.actionRetrieveData.setEnabled(True)
                 self.actionIdentifyData.setEnabled(True)
+                self.actionAddressSearch.setEnabled(True)
                 self.actionValidateAPIKey.setText(self.tr("Log Out"))
                 
             else:
@@ -341,6 +344,7 @@ class CQAFabric:
         # Close the authentication dialog
         self.actionRetrieveData.setEnabled(False)
         self.actionIdentifyData.setEnabled(False)
+        self.actionAddressSearch.setEnabled(False)
         self.actionValidateAPIKey.setText(self.tr("Log In"))
         self.auth_dialog.show()
         
@@ -608,7 +612,8 @@ class CQAFabric:
             if not selected_features:
                 self.dlg.infoBox.setText("No features selected in "+ self.dlg.mapVlayersCb.currentText() + ". Please make selection.")
                 self.dlg.infoBox.setStyleSheet("color: red;")
-                QApplication.processEvents()
+                return
+                
             selected_vintage = self.dlg.comboBox_vintage.currentText()  # Get the selected vintage from the combo box vintage
             selected_layer = self.dlg.comboBox_layer.currentText()  # Get the selected layer from the combo box layer
             
