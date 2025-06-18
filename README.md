@@ -1,7 +1,7 @@
 [![GitHub release](https://img.shields.io/github/v/release/hchen-cqa/cqafabric_QGIS)](https://github.com/hchen-cqa/cqafabric_QGIS/releases)
 <h1>cqafabric</h1>
 
-&nbsp;&nbsp;&nbsp;&nbsp;![qgis2web](icons/Fabric-3_CircleBG_Patina-100.png)
+&nbsp;&nbsp;&nbsp;&nbsp;![cqafabric](icons/Fabric-3_CircleBG_Patina-100.png)
 
 QGIS plugin to use CQA Fabric APIs.</br>
     ![image](https://github.com/user-attachments/assets/7bbe4da7-930d-4ffb-a378-6592cff82b0c)

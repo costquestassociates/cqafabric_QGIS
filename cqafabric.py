@@ -813,9 +813,13 @@ class CQAFabric:
             scroll.setWidget(self.content)
             layout = QVBoxLayout(self.content)
             for item in content_list:
-                layout.addWidget(QLabel(item, self))
+                label = QLabel(item, self)
+                label.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard)
+                layout.addWidget(label)
             self.layout().addWidget(scroll, 0, 0, 1, self.layout().columnCount())
             self.setStyleSheet("QScrollArea{min-width:650px; min-height:400px}")
+
+
 
 
     def display_point(self,point: QgsPointXY):
