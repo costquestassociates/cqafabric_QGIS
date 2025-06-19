@@ -337,7 +337,7 @@
           </font>
          </property>
          <property name="selectionMode">
-          <enum>QAbstractItemView::MultiSelection</enum>
+          <enum>QAbstractItemView::ExtendedSelection</enum>
          </property>
         </widget>
        </item>
@@ -499,6 +499,9 @@
            <bold>false</bold>
           </font>
          </property>
+         <property name="selectionMode">
+          <enum>QAbstractItemView::ExtendedSelection</enum>
+         </property>
         </widget>
        </item>
       </layout>
@@ -520,6 +523,12 @@
      <pointsize>8</pointsize>
     </font>
    </property>
+   <property name="mouseTracking">
+    <bool>false</bool>
+   </property>
+   <property name="autoFillBackground">
+    <bool>true</bool>
+   </property>
    <property name="styleSheet">
     <string notr="true">background-color: rgb(244, 239, 239);
 border-color: rgb(255, 255, 0);
@@ -528,8 +537,23 @@ color: rgb(0, 0, 255);</string>
    <property name="editTriggers">
     <set>QAbstractItemView::NoEditTriggers</set>
    </property>
+   <property name="dragEnabled">
+    <bool>false</bool>
+   </property>
+   <property name="defaultDropAction">
+    <enum>Qt::IgnoreAction</enum>
+   </property>
+   <property name="alternatingRowColors">
+    <bool>false</bool>
+   </property>
+   <property name="selectionMode">
+    <enum>QAbstractItemView::ExtendedSelection</enum>
+   </property>
    <property name="selectionBehavior">
     <enum>QAbstractItemView::SelectRows</enum>
+   </property>
+   <property name="sortingEnabled">
+    <bool>true</bool>
    </property>
   </widget>
   <widget class="QPushButton" name="populatetableBtn">

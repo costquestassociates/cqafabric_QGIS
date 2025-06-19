@@ -457,8 +457,11 @@ class CQAFabric:
                         for feature_id in feature_ids:
                             Define_Layer.selectByIds([feature_id])
                             box = Define_Layer.boundingBoxOfSelected()
-                            self.iface.mapCanvas().setExtent(box)
-                            self.iface.mapCanvas().refresh()
+                            if not box.isNull():
+                                # Set the extent of the map canvas to the bounding box of the selected features
+                                self.iface.mapCanvas().setDestinationCrs(Define_Layer.crs())
+                                self.iface.mapCanvas().setExtent(box)
+                                self.iface.mapCanvas().refresh()
                             geometry = Define_Layer.getGeometry(feature_id)
                             context = QgsSelectionContext()
                             canvas = self.iface.mapCanvas()
@@ -629,8 +632,12 @@ class CQAFabric:
             for feature_id in feature_ids:
                 Define_Layer.selectByIds([feature_id])
                 box = Define_Layer.boundingBoxOfSelected()
-                self.iface.mapCanvas().setExtent(box)
-                self.iface.mapCanvas().refresh()
+                # match the box projection to the map projection
+                if not box.isNull():
+                    # Set the extent of the map canvas to the bounding box of the selected features
+                    self.iface.mapCanvas().setDestinationCrs(Define_Layer.crs())
+                    self.iface.mapCanvas().setExtent(box)
+                    self.iface.mapCanvas().refresh()
                 geometry = Define_Layer.getGeometry(feature_id)
                 context = QgsSelectionContext()
                 canvas = self.iface.mapCanvas()
