@@ -76,23 +76,36 @@ def load_fabricvectortilelayer(selected_vintage,selected_layer,apikey):
 
 def bulk(uuidjson,fieldlist,selected_vintage,selected_layer,apikey):
     # Create the URL for the API request
-    hdr ={
-    # Request headers
-    'Content-Type': 'application/json',
-    'Cache-Control': 'no-cache',
-    'apikey': apikey,
-    }
-
-    # Request body
-    # Read the JSON file
+    
     with open(uuidjson, 'r') as f:
         data = json.load(f)
-    batch_size = 1000  # Number of records to process at a time
+    
     total_records = len(data)
-    combined_data = []
-
-    field_size = 5
     total_fields = len(fieldlist)
+
+    # Get the data level to determine Number of fields to process at a time
+    url = f"https://api.costquest.com/accesscontrol/getaccess?userid={apikey}"
+    req = urllib.request.Request(url)
+    response = urllib.request.urlopen(req)
+    response_data = json.loads(response.read())
+    datalevel = response_data['info']['datalevel']
+
+    batch_size = 1000  # Number of records to process at a time
+
+    # Number of fields to process at a time
+    if datalevel == 100:
+        field_size = total_fields   
+    else:
+        field_size = 5  
+
+    hdr ={
+        # Request headers
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache',
+        'apikey': apikey,
+        }
+    
+    combined_data = []
     for start_1 in range(0, total_fields, field_size):
         fieldlist_sub = fieldlist[start_1:start_1 + field_size]
         url = f"https://costquest.azure-api.net/fabric/{selected_vintage}/bulk/{selected_layer}?field=" + ",".join(fieldlist_sub)
