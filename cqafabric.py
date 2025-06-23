@@ -25,7 +25,8 @@ from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication, Qt
 from qgis.PyQt.QtGui import QIcon, QColor
 from qgis.PyQt.QtWidgets import QAction, QToolButton, QMenu
 from PyQt5.QtWidgets import QMessageBox, QScrollArea, QVBoxLayout, QLabel, QWidget, QPushButton, QLineEdit, QApplication
-from qgis.core import QgsDataSourceUri, QgsVectorTileLayer, QgsProject, QgsVectorLayer, Qgis, QgsJsonExporter, QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsSelectionContext, QgsFeature, QgsPointXY, QgsGeometry, QgsSettings
+from PyQt5.QtGui import QStandardItemModel, QStandardItem
+from qgis.core import QgsProject, QgsVectorLayer, Qgis, QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsSelectionContext, QgsFeature, QgsPointXY, QgsGeometry, QgsSettings, QgsMapLayer
 import processing
 from qgis.gui import QgsMapToolEmitPoint, QgsHighlight, QgsMapToolIdentify
 from .generalfunctions import *
@@ -185,24 +186,21 @@ class CQAFabric:
         self.toolbar.setObjectName('CQA Fabric')
         self.toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
 
-        icon_path = ':/plugins/cqafabric/icons/icon.png'
-        '''# Create action for opening the Add Fabric Tiles window
-        icon_path_1 = ':/plugins/cqafabric/icons/icon1.png'
+
+        icon_path_1 = ':/plugins/cqafabric/icons/icon5.png'
         icon1 = QIcon(icon_path_1)
         self.actionAddFabricTiles = QAction(icon1, self.tr("Add Fabric Tiles"))
         self.menu.addAction(self.actionAddFabricTiles)
         toolButtonMenu.addAction(self.actionAddFabricTiles)
         self.actionAddFabricTiles.triggered.connect(self.AddFabricTiles)
         self.toolbar.addAction(self.actionAddFabricTiles)
-        '''
-
         
 
 
         # Create action for opening the Retrieve data fields window
         icon_path_1 = ':/plugins/cqafabric/icons/icon1.png'
         icon2 = QIcon(icon_path_1)
-        self.actionRetrieveData = QAction(icon2, self.tr("Retrieve Fabric Data"))
+        self.actionRetrieveData = QAction(icon2, self.tr("Retrieve Fabric"))
         self.menu.addAction(self.actionRetrieveData)
         toolButtonMenu.addAction(self.actionRetrieveData)
         self.actionRetrieveData.triggered.connect(self.RetrieveData)
@@ -211,7 +209,7 @@ class CQAFabric:
         # Create action for getting coordinates from mouse click in QGIS3 in a plugin
         icon_path_2 = ':/plugins/cqafabric/icons/icon2.png'
         icon3 = QIcon(icon_path_2)
-        self.actionIdentifyData = QAction(icon3, self.tr("Identify Fabric Data"))
+        self.actionIdentifyData = QAction(icon3, self.tr("Identify Fabric"))
         self.actionIdentifyData.setCheckable(True)
         self.menu.addAction(self.actionIdentifyData)
         toolButtonMenu.addAction(self.actionIdentifyData)
@@ -234,7 +232,7 @@ class CQAFabric:
         # Create action for address searching in QGIS3 in a plugin
         icon_path_4 = ':/plugins/cqafabric/icons/icon4.png'
         icon3 = QIcon(icon_path_4)
-        self.actionAddressSearch = QAction(icon3, self.tr("Address Search"))
+        self.actionAddressSearch = QAction(icon3, self.tr("Locate Fabric"))
         self.menu.addAction(self.actionAddressSearch)
         toolButtonMenu.addAction(self.actionAddressSearch)
         self.actionAddressSearch.triggered.connect(self.AddressSearch)
@@ -366,15 +364,9 @@ class CQAFabric:
     def AddFabricTiles(self):
         self.dlg = AddFabricTilesDialog()
         self.dlg.setWindowFlags(Qt.WindowStaysOnTopHint)
-        vintages=load_vintages(apikey)
-
-        """
-        # Get the current project and its layers
-        layers = QgsProject.instance().mapLayers().values()
-        layer_list = [layer.name() for layer in layers]
-        """
+        
         # Get the vintages from the API
-        layer_list = vintages
+        layer_list = load_vintages(apikey)
         self.dlg.comboBox_vintage.clear()
         self.dlg.comboBox_vintage.addItems(layer_list)
 
@@ -384,211 +376,219 @@ class CQAFabric:
 
         # show the dialog
         self.dlg.show()
-        # Run the dialog event loop
-    
-        result = self.dlg.exec_()
-        # See if OK was pressed
-        if result:
-            self.add_fabrictiles()
+
+        # if pushButton_AddTiles is clicked, add tiles to the map
+        self.dlg.pushButton_AddTiles_M.clicked.connect(lambda: self.add_fabrictileslayer())
+
+        # if pushButton_AddTiles is clicked, add tiles to the map
+        self.dlg.pushButton_AddTiles_S.clicked.connect(lambda: self.add_fabrictilessource())
+
 
 
     def RetrieveData(self):
-            global ids
-            global collect_calls
-            global divide_calls
-            """Run method that performs all the real work"""
+        
 
-            # Create the dialog with elements (after translation) and keep reference
-            # Only create GUI ONCE in callback, so that it will only load when the plugin is started
-            self.dlg = RetrieveDataDialog()
-            self.dlg.setFixedSize(self.dlg.size())
-            #self.dlg.setWindowFlags(Qt.WindowStaysOnTopHint)
-            vintages=load_vintages(apikey)
-
-            # Get the vintages from the API
-            layer_list = vintages
-            self.dlg.comboBox_vintage.clear()
-            self.dlg.comboBox_vintage.addItems(layer_list)
-
-            layer_list = getlayersnames(apikey)
-            self.dlg.comboBox_layer.clear()
-            self.dlg.comboBox_layer.addItems(layer_list)
-
-            # show the dialog
-            self.dlg.show()
-            layer = self.iface.activeLayer()
-            # Get the combo selection from the vintage combo box mapVlayersCb
-
-            # Check if a layer is selected
-            self.dlg.pushButton_ChgSelect.clicked.connect(lambda: self.change_selection())
-            # if pushButton_AddTiles is clicked, add tiles to the map
-            self.dlg.pushButton_AddTiles_M.clicked.connect(lambda: self.add_fabrictiles())
-
-            # if pushButton_AddTiles is clicked, add tiles to the map
-            self.dlg.pushButton_AddTiles_S.clicked.connect(lambda: self.add_fabrictilessource())
-
-            # if populatetableBtn is clicked, show the table with the selected features
-            self.dlg.populatetableBtn.clicked.connect(lambda: self.populate_table_result())
-
-            self.dlg.summarizetableBtn.clicked.connect(lambda: self.summarize_table_result())
+        global ids
+        global collect_calls
+        global divide_calls
 
 
-                    
-            # Run the dialog event loop
-            result = self.dlg.exec_()
-            # See if OK was pressed
-            if result:
-                if len(self.dlg.mapVlayersCb.currentText())>0:
-                    if self.dlg.checkBox_addlocations.isChecked():
-                        QgsVectorLayer = self.dlg.mapVlayersCb.currentLayer()
-                        self.iface.setActiveLayer(QgsVectorLayer)
-                        layer = self.iface.activeLayer()
-                        # Open attribute table of the active layer
-                        selected_vintage = self.dlg.comboBox_vintage.currentText()  # Get the selected vintage from the combo box vintage
-                        selected_layer = self.dlg.comboBox_layer.currentText()  # Get the selected layer from the combo box layer
-                        Define_Layer=processing.run("native:saveselectedfeatures", {'INPUT':layer,'OUTPUT':'TEMPORARY_OUTPUT'})['OUTPUT']
-                            
-                        ids= []  
-                            
-                        vector_tile_layer =load_fabricvectortilelayer(selected_vintage,selected_layer,apikey)
+        # Create the dialog with elements (after translation) and keep reference
+        # Only create GUI ONCE in callback, so that it will only load when the plugin is started
+        self.dlg = RetrieveDataDialog()
+        self.dlg.setWindowFlags(Qt.WindowMinimizeButtonHint | Qt.WindowCloseButtonHint)
+        self.dlg.setFixedSize(self.dlg.size())
+
+
+        # Get the vintages from the API
+        layer_list = load_vintages(apikey)
+        self.dlg.comboBox_vintage.clear()
+        self.dlg.comboBox_vintage.addItems(layer_list)
+
+        layer_list = getlayersnames(apikey)
+        self.dlg.comboBox_layer.clear()
+        self.dlg.comboBox_layer.addItems(layer_list)
+
+        # show the dialog
+        self.dlg.show()
+
+        # Check if a layer is selected
+        self.dlg.pushButton_ChgSelect.clicked.connect(lambda: self.change_selection())
+
+
+        # if populatetableBtn is clicked, show the table with the selected features
+        self.dlg.loadGeometryBtn.clicked.connect(lambda: self.load_geometry_result())
+
+        self.dlg.populatetableBtn.clicked.connect(lambda: self.populate_table_result())
+
+        self.dlg.summarizetableBtn.clicked.connect(lambda: self.summarize_table_result())
                 
-                    
-                        feature_ids = [f.id() for f in Define_Layer.getFeatures()]  # Get all feature IDs
-                        for feature_id in feature_ids:
-                            Define_Layer.selectByIds([feature_id])
-                            box = Define_Layer.boundingBoxOfSelected()
-                            if not box.isNull():
-                                # Set the extent of the map canvas to the bounding box of the selected features
-                                self.iface.mapCanvas().setDestinationCrs(Define_Layer.crs())
-                                self.iface.mapCanvas().setExtent(box)
-                                self.iface.mapCanvas().refresh()
-                            geometry = Define_Layer.getGeometry(feature_id)
-                            context = QgsSelectionContext()
-                            canvas = self.iface.mapCanvas()
-                            context.setScale(canvas.scale())
-                            xform = QgsCoordinateTransform(Define_Layer.crs(), vector_tile_layer.crs(), QgsProject.instance())
-                            geometry.transform(xform)
-                            vector_tile_layer.selectByGeometry(geometry,context)
-                            if selected_layer != "locations":
-                                layer = QgsVectorLayer("Polygon?crs="+vector_tile_layer.crs().authid()+"&field=uuid:string(255)", f"FabricSelection_{selected_layer} - {selected_vintage}", "memory")
-                                layer.startEditing()
-                                for feature in vector_tile_layer.selectedFeatures():
-                                    newfeature = QgsFeature()
-                                    tilegeom=feature.geometry()
-                                    newfeature.setGeometry(tilegeom)
-                                    uuid=feature.attributes()[0]
-                                    newfeature.setAttributes([uuid])
-                                    layer.dataProvider().addFeatures([newfeature])
-                                    
-                                    ids.append(uuid)
-                                layer.commitChanges()
-                                # Create a new GeoJSON file with the UUIDs
-                                uuidjson_file = os.path.join(temp_dir, "selected_uuids.json")
-                                # Create a new GeoJSON file with the UUIDs
-                                with open(uuidjson_file, "w") as f:
-                                    json.dump(ids, f, indent=2)
-                            else:
-                                for feature in vector_tile_layer.selectedFeatures(): 
-                                    uuid=feature.attributes()[0]
-                                    ids.append(uuid)
-                                    
-                                # Create a new GeoJSON file with the UUIDs
-                                uuidjson_file = os.path.join(temp_dir, "selected_uuids.json")
-                                # Create a new GeoJSON file with the UUIDs
-                                with open(uuidjson_file, "w") as f:
-                                    json.dump(ids, f, indent=2)
-                                try:    
-                                        combined_data = bulk(uuidjson_file,['latitude','longitude'],selected_vintage,"locations",apikey)
-                                        output_file = os.path.join(temp_dir, "selected_locations.csv")
-                                        with open(output_file, mode="w", newline="") as file:
-                                        # Get all keys from the first inner dictionary (assuming all dictionaries have the same structure)
-                                            fieldnames = list(next(iter(combined_data.values())).keys())
-                                            writer = csv.DictWriter(file, fieldnames=fieldnames)
-                                            
-                                            # Write the header
-                                            writer.writeheader()
-                                            
-                                            # Write each inner dictionary as a row
-                                            for inner_dict in combined_data.values():
-                                                writer.writerow(inner_dict)
-                                        #self.iface.messageBar().pushMessage("Success", f"uuid information exported to {output_file}", level=Qgis.Success)
-                                        
-                                        # Convert the CSV file to a shapefile
-                                        layer = processing.run("native:createpointslayerfromtable", {
-                                            'INPUT': output_file,
-                                            'XFIELD': 'longitude',
-                                            'YFIELD': 'latitude',
-                                            'ZFIELD': '',
-                                            'MFIELD': '',
-                                            'TARGET_CRS': QgsCoordinateReferenceSystem('EPSG:4326'),
-                                            'OUTPUT': 'TEMPORARY_OUTPUT'
-                                        })['OUTPUT']
-
-                                    
-                                except Exception as e:
-                                    self.iface.messageBar().pushMessage("Error", f"An error occurred: {str(e)}", level=Qgis.Critical)
-                                    return False
-
-                        # Get the list of fields from selectedFeaturesLw list widget
-                        selected_fields = []
-                        for i in range(self.dlg.selectedFeaturesLw.count()):
-                            item = self.dlg.selectedFeaturesLw.item(i)
-                            retrieved_data = item.data(QtCore.Qt.UserRole)
-                            selected_fields.append(retrieved_data)
-                    
-                        combined_data = bulk(uuidjson_file,selected_fields,selected_vintage,selected_layer,apikey)
-                        # Convert data to CSV file
-                        DateStamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-                        csvoutput_file = os.path.join(temp_dir, f"FabricSelection_{selected_layer} - {selected_vintage}_{DateStamp}.csv")
-                        
-                        with open(csvoutput_file, mode="w", newline="") as file:
-                            
-                        # Get all keys from the first inner dictionary (assuming all dictionaries have the same structure)
-                            fieldnames = list(next(iter(combined_data.values())).keys())
-                            writer = csv.DictWriter(file, fieldnames=fieldnames)
-                            
-                            # Write the header
-                            writer.writeheader()
-                            
-                            # Write each inner dictionary as a row
-                            for inner_dict in combined_data.values():
-                                writer.writerow(inner_dict)
-
-                        self.iface.messageBar().pushMessage("Success", f"Fabric data exported to {csvoutput_file}", level=Qgis.Success)
-                        
-                    
-                        joinshp=processing.run("native:joinattributestable", {'INPUT':layer,'FIELD':'uuid','INPUT_2':csvoutput_file,'FIELD_2':'uuid','FIELDS_TO_COPY':[],'METHOD':1,'DISCARD_NONMATCHING':False,'PREFIX':'','OUTPUT':'TEMPORARY_OUTPUT'})['OUTPUT']
-                        joinshp.setName(f"FabricSelection_{selected_layer} - {selected_vintage}")
-                        QgsProject.instance().addMapLayer(joinshp)
-                    else:
-                        self.dlg.close()
-                else:
-                    self.dlg.infoBox.setText("Please select a define layer")
-                    self.dlg.infoBox.setStyleSheet("color: red;")
-                     # Change label_layer_3 to red and bold
-                    self.dlg.label_layer_3.setStyleSheet("color: red; font-weight: bold;")
-                    QApplication.processEvents()
-
 
     def change_selection(self):
         if len(self.dlg.mapVlayersCb.currentText())>0:
-            QgsVectorLayer = self.dlg.mapVlayersCb.currentLayer()
-            self.iface.setActiveLayer(QgsVectorLayer)
+            selected_layer_obj = self.dlg.mapVlayersCb.currentLayer()
+            self.iface.setActiveLayer(selected_layer_obj)
             self.iface.showAttributeTable(self.iface.activeLayer()) 
             self.dlg.infoBox.setText("Use the selection of "+ self.dlg.mapVlayersCb.currentText() + " define layer.")
+            self.dlg.infoBox.setStyleSheet("color: black;")
         else:
             self.dlg.infoBox.setText("Please activate a boundary vector layer in Layers Panel.")
             self.dlg.infoBox.setStyleSheet("color: red;")
             self.dlg.label_layer_3.setStyleSheet("color: red; font-weight: bold;")
+        self.dlg.progressBar.reset()
 
+    def load_geometry_result(self):
+        self.dlg.progressBar.reset()
+        if len(self.dlg.mapVlayersCb.currentText())>0:
+            selected_layer_obj = self.dlg.mapVlayersCb.currentLayer()
+            layer = self.iface.activeLayer()
+            # Open attribute table of the active layer
+            selected_vintage = self.dlg.comboBox_vintage.currentText()  # Get the selected vintage from the combo box vintage
+            selected_layer = self.dlg.comboBox_layer.currentText()  # Get the selected layer from the combo box layer
+            Define_Layer=processing.run("native:saveselectedfeatures", {'INPUT':layer,'OUTPUT':'TEMPORARY_OUTPUT'})['OUTPUT']
+            
+            # Get the name of selected_layer_obj
+            if self.dlg.checkBox_selection.isChecked():
+                resultName = selected_layer_obj.name()+f"_selection_{selected_layer}{selected_vintage}"
+            else:
+                resultName = selected_layer_obj.name()+f"_{selected_layer}{selected_vintage}"
+            self.iface.setActiveLayer(selected_layer_obj)
+            
+            self.dlg.infoBox.setText(f"Loading geometry for {resultName} layer...")
+            self.dlg.infoBox.setStyleSheet("color: black;")          
 
+            ids= []  
+                
+            vector_tile_layer =load_fabricvectortilelayer(selected_vintage,selected_layer,apikey)
+    
+        
+            feature_ids = [f.id() for f in Define_Layer.getFeatures()]  # Get all feature IDs
+            for feature_id in feature_ids:
+                Define_Layer.selectByIds([feature_id])
+                box = Define_Layer.boundingBoxOfSelected()
+                if not box.isNull():
+                    # Set the extent of the map canvas to the bounding box of the selected features
+                    self.iface.mapCanvas().setDestinationCrs(Define_Layer.crs())
+                    self.iface.mapCanvas().setExtent(box)
+                    self.iface.mapCanvas().refresh()
+                geometry = Define_Layer.getGeometry(feature_id)
+                context = QgsSelectionContext()
+                canvas = self.iface.mapCanvas()
+                context.setScale(canvas.scale())
+                xform = QgsCoordinateTransform(Define_Layer.crs(), vector_tile_layer.crs(), QgsProject.instance())
+                geometry.transform(xform)
+                vector_tile_layer.selectByGeometry(geometry,context)
+                if selected_layer != "locations":
+                    layer = QgsVectorLayer("Polygon?crs="+vector_tile_layer.crs().authid()+"&field=uuid:string(255)", f"{resultName}", "memory")
+                    layer.startEditing()
+                    for feature in vector_tile_layer.selectedFeatures():
+                        newfeature = QgsFeature()
+                        tilegeom=feature.geometry()
+                        newfeature.setGeometry(tilegeom)
+                        uuid=feature.attributes()[0]
+                        newfeature.setAttributes([uuid])
+                        layer.dataProvider().addFeatures([newfeature])
+                        
+                        ids.append(uuid)
+                    layer.commitChanges()
+                    # Create a new GeoJSON file with the UUIDs
+                    uuidjson_file = os.path.join(temp_dir, "selected_uuids.json")
+                    # Create a new GeoJSON file with the UUIDs
+                    with open(uuidjson_file, "w") as f:
+                        json.dump(ids, f, indent=2)
+                else:
+                    for feature in vector_tile_layer.selectedFeatures(): 
+                        uuid=feature.attributes()[0]
+                        ids.append(uuid)
+                        
+                    # Create a new GeoJSON file with the UUIDs
+                    uuidjson_file = os.path.join(temp_dir, "selected_uuids.json")
+                    # Create a new GeoJSON file with the UUIDs
+                    with open(uuidjson_file, "w") as f:
+                        json.dump(ids, f, indent=2)
+                    try:    
+                            combined_data = bulk(uuidjson_file,['latitude','longitude'],selected_vintage,"locations",apikey,self.dlg.progressBar)
+                            output_file = os.path.join(temp_dir, "selected_locations.csv")
+                            with open(output_file, mode="w", newline="") as file:
+                            # Get all keys from the first inner dictionary (assuming all dictionaries have the same structure)
+                                fieldnames = list(next(iter(combined_data.values())).keys())
+                                writer = csv.DictWriter(file, fieldnames=fieldnames)
+                                
+                                # Write the header
+                                writer.writeheader()
+                                
+                                # Write each inner dictionary as a row
+                                for inner_dict in combined_data.values():
+                                    writer.writerow(inner_dict)
+
+                            # Convert the CSV file to a shapefile
+                            layer = processing.run("native:createpointslayerfromtable", {
+                                'INPUT': output_file,
+                                'XFIELD': 'longitude',
+                                'YFIELD': 'latitude',
+                                'ZFIELD': '',
+                                'MFIELD': '',
+                                'TARGET_CRS': QgsCoordinateReferenceSystem('EPSG:4326'),
+                                'OUTPUT': 'TEMPORARY_OUTPUT'
+                            })['OUTPUT']
+
+                        
+                    except Exception as e:
+                        self.iface.messageBar().pushMessage("Error", f"An error occurred: {str(e)}", level=Qgis.Critical)
+                        return False
+
+            # Get the list of fields from selectedFeaturesLw list widget
+            selected_fields = []
+            if self.dlg.selectedFeaturesLw.count() > 0:
+                for i in range(self.dlg.selectedFeaturesLw.count()):
+                    item = self.dlg.selectedFeaturesLw.item(i)
+                    retrieved_data = item.data(QtCore.Qt.UserRole)
+                    selected_fields.append(retrieved_data)
+            
+                combined_data = bulk(uuidjson_file,selected_fields,selected_vintage,selected_layer,apikey,self.dlg.progressBar)
+                # Convert data to CSV file
+                DateStamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                csvoutput_file = os.path.join(temp_dir, f"{resultName}_{DateStamp}.csv")
+                
+                with open(csvoutput_file, mode="w", newline="") as file:
+                    
+                # Get all keys from the first inner dictionary (assuming all dictionaries have the same structure)
+                    fieldnames = list(next(iter(combined_data.values())).keys())
+                    writer = csv.DictWriter(file, fieldnames=fieldnames)
+                    
+                    # Write the header
+                    writer.writeheader()
+                    
+                    # Write each inner dictionary as a row
+                    for inner_dict in combined_data.values():
+                        writer.writerow(inner_dict)
+                
+            
+                joinshp=processing.run("native:joinattributestable", {'INPUT':layer,'FIELD':'uuid','INPUT_2':csvoutput_file,'FIELD_2':'uuid','FIELDS_TO_COPY':[],'METHOD':1,'DISCARD_NONMATCHING':False,'PREFIX':'','OUTPUT':'TEMPORARY_OUTPUT'})['OUTPUT']
+                joinshp.setName(resultName)
+                QgsProject.instance().addMapLayer(joinshp)
+                self.dlg.infoBox.setText(f"{resultName}" + " layer with selected fields added to the map.")
+                self.dlg.infoBox.setStyleSheet("color: green;")
+            else:
+                QgsProject.instance().addMapLayer(layer)
+                self.dlg.infoBox.setText(f"{resultName}" + " layer with uuid added to the map.")
+                self.dlg.infoBox.setStyleSheet("color: green;")
+            # Update the progress bar to 100%
+            self.dlg.progressBar.setFormat("Completed")
+        else:
+            self.dlg.infoBox.setText("Please select a define layer")
+            self.dlg.infoBox.setStyleSheet("color: red;")
+                # Change label_layer_3 to red and bold
+            self.dlg.label_layer_3.setStyleSheet("color: red; font-weight: bold;")
+            QApplication.processEvents()
+        
     def populate_table_result(self):           
         # Do something useful here - delete the line containing pass and
         # substitute with your code.
         # Show a message while the data is being retrieved
-        QgsVectorLayer = self.dlg.mapVlayersCb.currentLayer()
+        selected_layer_obj = self.dlg.mapVlayersCb.currentLayer()
         # Check if layer is valid
-        if not QgsVectorLayer:
+        if not selected_layer_obj:
             self.dlg.infoBox.setText("Please select a define layer.")
             self.dlg.infoBox.setStyleSheet("color: red;")
             # Change label_layer_3 to red and bold
@@ -597,20 +597,23 @@ class CQAFabric:
             return
         else:
             self.dlg.infoBox.setText("Please wait while the data is being retrieved...")
+            self.dlg.infoBox.setStyleSheet("color: black;")
             QApplication.processEvents()
             
-            self.iface.setActiveLayer(QgsVectorLayer)
+            self.iface.setActiveLayer(selected_layer_obj)
             layer = self.iface.activeLayer()
             
             # Open attribute table of the active layer
             if self.dlg.checkBox_selection.isChecked(): # Use only selected features
                 selected_features = layer.selectedFeatures()
                 self.dlg.infoBox.setText("Use only selected features in "+ self.dlg.mapVlayersCb.currentText())
+                self.dlg.infoBox.setStyleSheet("color: black;")
                 QApplication.processEvents()
             else:   # Use all features
                 layer.selectAll()
                 selected_features = layer.selectedFeatures()
                 self.dlg.infoBox.setText("Use all features in "+ self.dlg.mapVlayersCb.currentText())
+                self.dlg.infoBox.setStyleSheet("color: black;")
                 QApplication.processEvents()
             if not selected_features:
                 self.dlg.infoBox.setText("No features selected in "+ self.dlg.mapVlayersCb.currentText() + ". Please make selection.")
@@ -655,6 +658,7 @@ class CQAFabric:
                 with open(uuidjson_file, "w") as f:
                     json.dump(ids, f, indent=2)
                 self.dlg.infoBox.setText("Retrieving " + str(len(ids)) + " ids data ...")
+                self.dlg.infoBox.setStyleSheet("color: black;")
                 QApplication.processEvents()
                 
             # Get the list of fields from selectedFeaturesLw list widget
@@ -670,7 +674,7 @@ class CQAFabric:
                 QApplication.processEvents()
                 return
             else:
-                combined_data = bulk(uuidjson_file,selected_fields,selected_vintage,selected_layer,apikey)
+                combined_data = bulk(uuidjson_file,selected_fields,selected_vintage,selected_layer,apikey,self.dlg.progressBar)
                 data = list(combined_data.values())
                 
                 """
@@ -725,8 +729,9 @@ class CQAFabric:
         pass
 
 
-    def add_fabrictiles(self):
+    def add_fabrictileslayer(self):
         self.dlg.infoBox.setText("Please wait while the vector tile layer is added to the map...")
+        self.dlg.infoBox.setStyleSheet("color: black;")
         QApplication.processEvents()
         selected_vintage = self.dlg.comboBox_vintage.currentText()  # Get the selected vintage from the combo box vintage
         selected_layer = self.dlg.comboBox_layer.currentText()  # Get the selected layer from the combo box layer
@@ -755,6 +760,7 @@ class CQAFabric:
 
     def add_fabrictilessource(self):
         self.dlg.infoBox.setText("Please wait while the vector tile source is added to the browser...")
+        self.dlg.infoBox.setStyleSheet("color: black;")
         QApplication.processEvents()
         selected_vintage = self.dlg.comboBox_vintage.currentText()  # Get the selected vintage from the combo box vintage
         selected_layer = self.dlg.comboBox_layer.currentText()  # Get the selected layer from the combo box layer
@@ -793,6 +799,11 @@ class CQAFabric:
         if self.actionIdentifyData.isChecked():
             # get the uri of the layer
 
+            self.dlg = IdentifyDataDialog()  # Assuming you have a dialog for this action
+            # show the dialog on left corner of the screen
+            self.dlg.move(self.iface.mainWindow().pos().x() + 10, self.iface.mainWindow().pos().y() + 10)
+            self.dlg.setWindowFlags(Qt.WindowStaysOnTopHint)
+            self.dlg.show()
 
             # Reference to the map canvas
             canvas = self.iface.mapCanvas()
@@ -802,13 +813,20 @@ class CQAFabric:
                 
             # Connect the signal to a custom slot to handle the clicked point
             self.pointTool.canvasClicked.connect(lambda point, button: self.display_point(point))
-
+            # Set the cursor for the map tool
             # Set the map tool to the canvas
             canvas.setMapTool(self.pointTool)
+            # Connect this function to the QGIS signal
+            QgsProject.instance().layerWillBeRemoved.connect(self.on_active_layer_changed)
+            self.iface.layerTreeView().currentLayerChanged.connect(lambda layer: self.on_active_layer_changed())
 
         
         else:
             self.iface.mapCanvas().setMapTool(QgsMapToolEmitPoint(self.iface.mapCanvas()))
+            self.dlg.close()
+
+        # when dlg is closed, uncheck the action
+        self.dlg.finished.connect(lambda: self.actionIdentifyData.setChecked(False))
 
 
     class ScrollMessageBox(QMessageBox):
@@ -825,8 +843,6 @@ class CQAFabric:
                 layout.addWidget(label)
             self.layout().addWidget(scroll, 0, 0, 1, self.layout().columnCount())
             self.setStyleSheet("QScrollArea{min-width:650px; min-height:400px}")
-
-
 
 
     def display_point(self,point: QgsPointXY):
@@ -968,6 +984,7 @@ class CQAFabric:
         n = 0
         if self.dlg.comboBox_type.currentText()== "Address":
             self.dlg.infoBox.setText("Searching for address: "+ self.dlg.infoBox_input.text())
+            self.dlg.infoBox.setStyleSheet("color: black;")
             data = geocodeautocomplete(apikey, self.dlg.infoBox_input.text())
             if data:
                 for key, value in data.items():
@@ -1016,6 +1033,7 @@ class CQAFabric:
 
         elif self.dlg.comboBox_type.currentText()== "Coordinates":
             self.dlg.infoBox.setText("Searching for Coordinates: "+ self.dlg.infoBox_input.text())
+            self.dlg.infoBox.setStyleSheet("color: black;")
             coordinates = self.dlg.infoBox_input.text().split(",")
             # convert coordinates to float
             coordinates_1 = [float(coord.strip()) for coord in coordinates]
@@ -1099,6 +1117,15 @@ class CQAFabric:
             self.dlg.close()
             # if this action dialog is closed, deactivate the action        
 
+    def on_active_layer_changed(self):
+        layer = self.iface.activeLayer()
+        # check if layer is vectortile layer
+        if layer and layer.type() == QgsMapLayer.VectorTileLayer:
+            index = self.dlg.mapVlayersCb.findText(layer.name())
+            if index != -1:
+                self.dlg.mapVlayersCb.setCurrentIndex(index)
+        else:
+            self.dlg.mapVlayersCb.setCurrentIndex(-1)
 
 '''
     def run(self):

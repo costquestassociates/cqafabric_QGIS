@@ -2,6 +2,9 @@
 <ui version="4.0">
  <class>Dialog</class>
  <widget class="QDialog" name="Dialog">
+  <property name="windowModality">
+   <enum>Qt::NonModal</enum>
+  </property>
   <property name="enabled">
    <bool>true</bool>
   </property>
@@ -9,8 +12,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>890</width>
-    <height>662</height>
+    <width>925</width>
+    <height>656</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -25,8 +28,8 @@
   <widget class="QDialogButtonBox" name="buttonBox">
    <property name="geometry">
     <rect>
-     <x>700</x>
-     <y>620</y>
+     <x>620</x>
+     <y>680</y>
      <width>161</width>
      <height>41</height>
     </rect>
@@ -35,17 +38,7 @@
     <enum>Qt::Horizontal</enum>
    </property>
    <property name="standardButtons">
-    <set>QDialogButtonBox::Cancel|QDialogButtonBox::Ok</set>
-   </property>
-  </widget>
-  <widget class="QgsMapLayerComboBox" name="mapVlayersCb">
-   <property name="geometry">
-    <rect>
-     <x>120</x>
-     <y>20</y>
-     <width>211</width>
-     <height>26</height>
-    </rect>
+    <set>QDialogButtonBox::NoButton</set>
    </property>
   </widget>
   <widget class="QLabel" name="label_layer_3">
@@ -74,7 +67,7 @@
     <rect>
      <x>20</x>
      <y>10</y>
-     <width>761</width>
+     <width>731</width>
      <height>51</height>
     </rect>
    </property>
@@ -91,10 +84,10 @@
    <widget class="QPushButton" name="pushButton_ChgSelect">
     <property name="geometry">
      <rect>
-      <x>450</x>
-      <y>20</y>
-      <width>101</width>
-      <height>21</height>
+      <x>470</x>
+      <y>10</y>
+      <width>111</width>
+      <height>31</height>
      </rect>
     </property>
     <property name="font">
@@ -111,10 +104,10 @@
    <widget class="QCheckBox" name="checkBox_selection">
     <property name="geometry">
      <rect>
-      <x>330</x>
-      <y>20</y>
+      <x>340</x>
+      <y>10</y>
       <width>121</width>
-      <height>21</height>
+      <height>31</height>
      </rect>
     </property>
     <property name="font">
@@ -132,31 +125,21 @@
      <bool>true</bool>
     </property>
    </widget>
-   <widget class="QCheckBox" name="checkBox_addlocations">
-    <property name="enabled">
-     <bool>true</bool>
-    </property>
+   <widget class="QgsMapLayerComboBox" name="mapVlayersCb">
     <property name="geometry">
      <rect>
-      <x>570</x>
-      <y>20</y>
-      <width>191</width>
-      <height>21</height>
+      <x>110</x>
+      <y>10</y>
+      <width>211</width>
+      <height>26</height>
      </rect>
     </property>
     <property name="font">
      <font>
-      <family>Arial</family>
       <pointsize>8</pointsize>
       <weight>50</weight>
       <bold>false</bold>
      </font>
-    </property>
-    <property name="text">
-     <string>Add Selection Fabric Data to Map?</string>
-    </property>
-    <property name="checked">
-     <bool>false</bool>
     </property>
    </widget>
   </widget>
@@ -165,8 +148,8 @@
     <rect>
      <x>20</x>
      <y>70</y>
-     <width>761</width>
-     <height>261</height>
+     <width>731</width>
+     <height>221</height>
     </rect>
    </property>
    <property name="font">
@@ -203,7 +186,7 @@
    <widget class="QComboBox" name="comboBox_vintage">
     <property name="geometry">
      <rect>
-      <x>100</x>
+      <x>110</x>
       <y>10</y>
       <width>211</width>
       <height>22</height>
@@ -220,8 +203,8 @@
    <widget class="QLabel" name="label_layer">
     <property name="geometry">
      <rect>
-      <x>10</x>
-      <y>40</y>
+      <x>350</x>
+      <y>10</y>
       <width>91</width>
       <height>21</height>
      </rect>
@@ -241,8 +224,8 @@
    <widget class="QComboBox" name="comboBox_layer">
     <property name="geometry">
      <rect>
-      <x>100</x>
-      <y>40</y>
+      <x>450</x>
+      <y>10</y>
       <width>211</width>
       <height>22</height>
      </rect>
@@ -255,56 +238,13 @@
      </font>
     </property>
    </widget>
-   <widget class="QPushButton" name="pushButton_AddTiles_S">
-    <property name="enabled">
-     <bool>true</bool>
-    </property>
-    <property name="geometry">
-     <rect>
-      <x>550</x>
-      <y>20</y>
-      <width>161</width>
-      <height>31</height>
-     </rect>
-    </property>
-    <property name="font">
-     <font>
-      <pointsize>8</pointsize>
-      <weight>75</weight>
-      <bold>true</bold>
-     </font>
-    </property>
-    <property name="text">
-     <string>Add Vector Tiles to Source</string>
-    </property>
-   </widget>
-   <widget class="QPushButton" name="pushButton_AddTiles_M">
-    <property name="geometry">
-     <rect>
-      <x>360</x>
-      <y>20</y>
-      <width>161</width>
-      <height>31</height>
-     </rect>
-    </property>
-    <property name="font">
-     <font>
-      <pointsize>8</pointsize>
-      <weight>75</weight>
-      <bold>true</bold>
-     </font>
-    </property>
-    <property name="text">
-     <string>Add Vector Tiles to Map</string>
-    </property>
-   </widget>
    <widget class="QWidget" name="layoutWidget">
     <property name="geometry">
      <rect>
       <x>10</x>
-      <y>70</y>
-      <width>741</width>
-      <height>181</height>
+      <y>50</y>
+      <width>711</width>
+      <height>173</height>
      </rect>
     </property>
     <layout class="QHBoxLayout" name="horizontalLayout">
@@ -315,8 +255,8 @@
          <property name="font">
           <font>
            <pointsize>8</pointsize>
-           <weight>75</weight>
-           <bold>true</bold>
+           <weight>50</weight>
+           <bold>false</bold>
           </font>
          </property>
          <property name="text">
@@ -481,8 +421,8 @@
          <property name="font">
           <font>
            <pointsize>8</pointsize>
-           <weight>75</weight>
-           <bold>true</bold>
+           <weight>50</weight>
+           <bold>false</bold>
           </font>
          </property>
          <property name="text">
@@ -513,9 +453,9 @@
    <property name="geometry">
     <rect>
      <x>20</x>
-     <y>340</y>
-     <width>851</width>
-     <height>272</height>
+     <y>301</y>
+     <width>891</width>
+     <height>291</height>
     </rect>
    </property>
    <property name="font">
@@ -556,13 +496,49 @@ color: rgb(0, 0, 255);</string>
     <bool>true</bool>
    </property>
   </widget>
-  <widget class="QPushButton" name="populatetableBtn">
+  <widget class="QProgressBar" name="progressBar">
    <property name="geometry">
     <rect>
-     <x>790</x>
-     <y>270</y>
-     <width>81</width>
-     <height>51</height>
+     <x>20</x>
+     <y>620</y>
+     <width>891</width>
+     <height>20</height>
+    </rect>
+   </property>
+   <property name="toolTip">
+    <string/>
+   </property>
+   <property name="value">
+    <number>0</number>
+   </property>
+  </widget>
+  <widget class="QLabel" name="infoBox">
+   <property name="geometry">
+    <rect>
+     <x>20</x>
+     <y>590</y>
+     <width>741</width>
+     <height>31</height>
+    </rect>
+   </property>
+   <property name="font">
+    <font>
+     <pointsize>8</pointsize>
+     <weight>50</weight>
+     <bold>false</bold>
+    </font>
+   </property>
+   <property name="text">
+    <string/>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="loadGeometryBtn">
+   <property name="geometry">
+    <rect>
+     <x>760</x>
+     <y>170</y>
+     <width>151</width>
+     <height>31</height>
     </rect>
    </property>
    <property name="sizePolicy">
@@ -573,7 +549,7 @@ color: rgb(0, 0, 255);</string>
    </property>
    <property name="font">
     <font>
-     <pointsize>10</pointsize>
+     <pointsize>9</pointsize>
      <weight>75</weight>
      <bold>true</bold>
     </font>
@@ -584,7 +560,7 @@ border-color: rgb(255, 170, 255);
 color: rgb(52, 116, 14);</string>
    </property>
    <property name="text">
-    <string>Show</string>
+    <string>Load Geometry</string>
    </property>
    <property name="icon">
     <iconset>
@@ -599,14 +575,14 @@ color: rgb(52, 116, 14);</string>
   </widget>
   <widget class="QPushButton" name="summarizetableBtn">
    <property name="enabled">
-    <bool>true</bool>
+    <bool>false</bool>
    </property>
    <property name="geometry">
     <rect>
-     <x>790</x>
-     <y>200</y>
-     <width>81</width>
-     <height>51</height>
+     <x>760</x>
+     <y>260</y>
+     <width>151</width>
+     <height>31</height>
     </rect>
    </property>
    <property name="sizePolicy">
@@ -617,7 +593,7 @@ color: rgb(52, 116, 14);</string>
    </property>
    <property name="font">
     <font>
-     <pointsize>10</pointsize>
+     <pointsize>9</pointsize>
      <weight>75</weight>
      <bold>true</bold>
     </font>
@@ -641,31 +617,57 @@ color: rgb(52, 116, 14);</string>
     </size>
    </property>
   </widget>
-  <widget class="QLineEdit" name="infoBox">
+  <widget class="QPushButton" name="populatetableBtn">
    <property name="geometry">
     <rect>
-     <x>20</x>
-     <y>630</y>
-     <width>671</width>
-     <height>20</height>
+     <x>760</x>
+     <y>120</y>
+     <width>151</width>
+     <height>31</height>
     </rect>
    </property>
-   <property name="text">
-    <string/>
+   <property name="sizePolicy">
+    <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+     <horstretch>0</horstretch>
+     <verstretch>0</verstretch>
+    </sizepolicy>
    </property>
-   <property name="maxLength">
-    <number>32770</number>
+   <property name="font">
+    <font>
+     <pointsize>9</pointsize>
+     <weight>75</weight>
+     <bold>true</bold>
+    </font>
+   </property>
+   <property name="styleSheet">
+    <string notr="true">background-color: rgb(244, 239, 239);
+border-color: rgb(255, 170, 255);
+color: rgb(52, 116, 14);</string>
+   </property>
+   <property name="text">
+    <string>Show Attribute</string>
+   </property>
+   <property name="icon">
+    <iconset>
+     <normaloff>../nvdb/skriv_icon.png</normaloff>../nvdb/skriv_icon.png</iconset>
+   </property>
+   <property name="iconSize">
+    <size>
+     <width>32</width>
+     <height>32</height>
+    </size>
    </property>
   </widget>
+  <zorder>progressBar</zorder>
   <zorder>tableResult</zorder>
   <zorder>groupBox_3</zorder>
   <zorder>groupBox</zorder>
   <zorder>buttonBox</zorder>
-  <zorder>mapVlayersCb</zorder>
   <zorder>label_layer_3</zorder>
-  <zorder>populatetableBtn</zorder>
-  <zorder>summarizetableBtn</zorder>
   <zorder>infoBox</zorder>
+  <zorder>loadGeometryBtn</zorder>
+  <zorder>summarizetableBtn</zorder>
+  <zorder>populatetableBtn</zorder>
  </widget>
  <customwidgets>
   <customwidget>

@@ -24,8 +24,11 @@
 
 import os
 
-from qgis.PyQt import uic
+from qgis.PyQt import uic, QtCore
 from qgis.PyQt import QtWidgets
+from qgis.core import QgsMapLayerProxyModel, QgsVectorLayer, QgsProject, QgsMapLayer, QgsVectorTileLayer
+from qgis.gui import QgsMapLayerComboBox
+from qgis.utils import iface
 
 # This loads your .ui file so that PyQt can populate your plugin with the elements from Qt Designer
 FORM_CLASS, _ = uic.loadUiType(os.path.join(
@@ -33,6 +36,9 @@ FORM_CLASS, _ = uic.loadUiType(os.path.join(
 
 
 class IdentifyDataDialog(QtWidgets.QDialog, FORM_CLASS):
+    layerChanged = QtCore.pyqtSignal(QgsVectorLayer)
+
+    mapVlayerCb: QgsMapLayerComboBox
     def __init__(self, parent=None):
         """Constructor."""
         super(IdentifyDataDialog, self).__init__(parent)
@@ -42,3 +48,50 @@ class IdentifyDataDialog(QtWidgets.QDialog, FORM_CLASS):
         # http://qt-project.org/doc/qt-4.8/designer-using-a-ui-file.html
         # #widgets-and-dialogs-with-auto-connect
         self.setupUi(self)
+        self._initConnections()
+        # when the dialog is opened, if the active layer is a vector tile layer, set it as the current layer
+        active_layer = iface.activeLayer()
+        if isinstance(active_layer, QgsVectorTileLayer):
+            self._layer = active_layer
+            index = self.mapVlayersCb.findText(active_layer.name())
+            if index != -1:
+                self.mapVlayersCb.setCurrentIndex(index)
+        else:
+            self._layer: QgsVectorTileLayer = None
+            self.mapVlayersCb.setCurrentIndex(-1)
+
+    def _initConnections(self):
+        self.mapVlayersCb.setFilters(QgsMapLayerProxyModel.VectorTileLayer)
+        self.mapVlayersCb.setCurrentIndex(-1)  # TODO bringt nix :(
+        self.mapVlayersCb.layerChanged.connect(self._layerChanged)
+        self.mapVlayersCb.activated.connect(self._layerActivated)
+        inst: QgsProject = QgsProject.instance()
+        inst.layerRemoved.connect(self._layerRemoved)
+
+
+    def layer(self):
+        return self._layer
+
+    def _layerRemoved(self, layerId):
+        try:
+            if self._layer.id() == layerId:  # layer removed
+                self._layer = None
+                self.layerChanged.emit(self._layer)
+        except:  # removed
+            self._layer = None
+            self.layerChanged.emit(self._layer)
+
+    def _layerActivated(self, idx):
+        layer: QgsVectorLayer = self.mapVlayersCb.currentLayer()
+        if self._layer != layer:
+            self._layer = layer
+            self.layerChanged.emit(self._layer)
+            iface.setActiveLayer(layer)
+
+    def _layerChanged(self, layer: QgsMapLayer):
+        if self._layer != layer:
+
+            self._layer = layer
+            self.layerChanged.emit(self._layer)
+            iface.setActiveLayer(layer)
+

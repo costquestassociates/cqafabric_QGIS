@@ -2,8 +2,6 @@ import requests
 import json
 import urllib.request
 from qgis.core import QgsDataSourceUri, QgsVectorTileLayer
-from PyQt5.QtWidgets import QTableWidgetItem
-from PyQt5.QtGui import QStandardItemModel, QStandardItem
 
 
 baseuri = "https://api.costquest.com/"
@@ -74,7 +72,7 @@ def load_fabricvectortilelayer(selected_vintage,selected_layer,apikey):
     return vector_tile_layer
 
 
-def bulk(uuidjson,fieldlist,selected_vintage,selected_layer,apikey):
+def bulk(uuidjson,fieldlist,selected_vintage,selected_layer,apikey,progressbar=None):
     # Create the URL for the API request
     
     with open(uuidjson, 'r') as f:
@@ -120,6 +118,12 @@ def bulk(uuidjson,fieldlist,selected_vintage,selected_layer,apikey):
             response = urllib.request.urlopen(req)
             response_data = json.loads(response.read())
             combined_data.extend(response_data)
+            # Update the progress bar if provided
+            if progressbar:
+                progressbar.setValue(int(start / total_records * 100))
+                progressbar.update()
+                
+                
         
         # join the data by uuid
         combined_data_dict = {}
@@ -129,8 +133,11 @@ def bulk(uuidjson,fieldlist,selected_vintage,selected_layer,apikey):
                 if uuid not in combined_data_dict:
                     combined_data_dict[uuid] = {}
                 combined_data_dict[uuid].update(item)
-
+    if progressbar:
+        progressbar.setValue(100)
+        progressbar.update()
     return combined_data_dict
+    
 
 
 def collect(geojson,selected_vintage):

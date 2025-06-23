@@ -103,10 +103,12 @@ class RetrieveDataDialog(QtWidgets.QDialog, FORM_CLASS):
 
     def _layerChanged(self, layer: QgsMapLayer):
         if self._layer != layer:
+
             self._layer = layer
             self.layerChanged.emit(self._layer)
             iface.setActiveLayer(layer)
-            self.label_layer_3.setStyleSheet("color: black; font-weight: bold;")
+            self.label_layer_3.setStyleSheet("")
+            self.progressBar.reset()
 
 
     def _layerFieldChanged(self, label: str):
