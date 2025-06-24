@@ -479,9 +479,7 @@ class CQAFabric:
                 geometry.transform(xform)
                 vector_tile_layer.selectByGeometry(
                     geometry,
-                    context,
-                    QgsVectorLayer.SetSelectionByIntersection
-                )
+                    context)
                 if selected_layer != "locations":
                     layer = QgsVectorLayer("Polygon?crs="+vector_tile_layer.crs().authid()+"&field=uuid:string(255)", f"{resultName}", "memory")
                     layer.startEditing()
@@ -628,6 +626,9 @@ class CQAFabric:
             selected_layer = self.dlg.comboBox_layer.currentText()  # Get the selected layer from the combo box layer
             
             Define_Layer=processing.run("native:saveselectedfeatures", {'INPUT':layer,'OUTPUT':'TEMPORARY_OUTPUT'})['OUTPUT']
+            # create spatial index for Define_Layer
+            Define_Layer.updateExtents()
+            Define_Layer.createSpatialIndex()
                 
             ids= []  
                 
@@ -810,26 +811,8 @@ class CQAFabric:
             for row_data in data:
                 row_items = [QStandardItem(str(value)) for value in row_data]
                 model.appendRow(row_items)
+                
 
-    def SetDataModel(self, model, data,selected_vintage,selected_layer):
-        if isinstance(data[0], dict):
-            headers = list(data[0].keys())
-            displayname_dict = getfieldsdisplayname(selected_vintage,selected_layer,apikey)
-            headers_display = []
-            for r in headers:
-                headers_display.append(displayname_dict[r] if r in displayname_dict.keys() else r)  
-            model.setHorizontalHeaderLabels(headers_display)
-
-            # Populate the table with data
-            for row_data in data:
-                row_items = [QStandardItem(str(row_data[key])) for key in headers]
-                model.appendRow(row_items)
-        else:
-            # If data is a list of lists, populate directly
-            for row_data in data:
-                row_items = [QStandardItem(str(value)) for value in row_data]
-                model.appendRow(row_items)
-    
 
     def summarize_table_result(self):
         pass
