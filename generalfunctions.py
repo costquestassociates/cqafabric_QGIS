@@ -120,7 +120,7 @@ def bulk(uuidjson,fieldlist,selected_vintage,selected_layer,apikey,progressbar=N
             combined_data.extend(response_data)
             # Update the progress bar if provided
             if progressbar:
-                progressbar.setValue(int(start / total_records * 100))
+                progressbar.setValue(int(50+start / total_records * 50))
                 progressbar.update()
                 
                 
@@ -158,6 +158,8 @@ def collect(geojson,selected_vintage):
 
 
 def individualdata(selected_vintage,selected_layer,apikey,uuid):
+    if not selected_vintage or not selected_layer: 
+            return []
     url = f"https://costquest.azure-api.net/fabric/{selected_vintage}/data/{selected_layer}?uuid={uuid}"
 
     hdr ={
@@ -178,6 +180,8 @@ def individualdata(selected_vintage,selected_layer,apikey,uuid):
 
 
 def getfieldsinfo(vintage:str,layer:str,apikey):
+        if not vintage or not layer: 
+            return []
         url = f"https://costquest.azure-api.net/fabric/{vintage}/fields/{layer}"
 
         hdr ={
@@ -200,6 +204,8 @@ def getfieldsinfo(vintage:str,layer:str,apikey):
 
 
 def getfieldsdisplayname(vintage:str,layer:str,apikey):   
+        if not vintage or not layer: 
+            return []  
         url = f"https://costquest.azure-api.net/fabric/{vintage}/fields/{layer}"
 
         hdr ={

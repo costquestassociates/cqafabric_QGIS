@@ -76,6 +76,7 @@ class RetrieveDataDialog(QtWidgets.QDialog, FORM_CLASS):
         inst: QgsProject = QgsProject.instance()
         inst.layerRemoved.connect(self._layerRemoved)
 
+        self.comboBox_vintage.currentIndexChanged.connect(self._layerFieldChanged)
         self.comboBox_layer.currentIndexChanged.connect(self._layerFieldChanged)
         self.selectAllBtn.clicked.connect(self.move_all_to_selection)
         self.selectSingleBtn.clicked.connect(self.move_selected_to_selection)
@@ -169,8 +170,9 @@ class RetrieveDataDialog(QtWidgets.QDialog, FORM_CLASS):
 
     
     def getavailablefields(vintage:str,layer:str,apikey):
+        if not vintage or not layer: 
+            return []   
         url = f"https://costquest.azure-api.net/fabric/{vintage}/fields/{layer}"
-
         hdr ={
         # Request headers
         'Cache-Control': 'no-cache',

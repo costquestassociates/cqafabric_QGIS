@@ -477,7 +477,11 @@ class CQAFabric:
                 context.setScale(canvas.scale())
                 xform = QgsCoordinateTransform(Define_Layer.crs(), vector_tile_layer.crs(), QgsProject.instance())
                 geometry.transform(xform)
-                vector_tile_layer.selectByGeometry(geometry,context)
+                vector_tile_layer.selectByGeometry(
+                    geometry,
+                    context,
+                    QgsVectorLayer.SetSelectionByIntersection
+                )
                 if selected_layer != "locations":
                     layer = QgsVectorLayer("Polygon?crs="+vector_tile_layer.crs().authid()+"&field=uuid:string(255)", f"{resultName}", "memory")
                     layer.startEditing()
@@ -643,8 +647,7 @@ class CQAFabric:
                     self.iface.mapCanvas().refresh()
                 geometry = Define_Layer.getGeometry(feature_id)
                 context = QgsSelectionContext()
-                canvas = self.iface.mapCanvas()
-                context.setScale(canvas.scale())
+                context.setScale(10000)  # Set to the lowest scale
                 xform = QgsCoordinateTransform(Define_Layer.crs(), vector_tile_layer.crs(), QgsProject.instance())
                 geometry.transform(xform)
                 vector_tile_layer.selectByGeometry(geometry,context)
