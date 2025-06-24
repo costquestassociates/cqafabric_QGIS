@@ -26,9 +26,9 @@ from qgis.PyQt.QtGui import QIcon, QColor
 from qgis.PyQt.QtWidgets import QAction, QToolButton, QMenu
 from PyQt5.QtWidgets import QMessageBox, QScrollArea, QVBoxLayout, QLabel, QWidget, QPushButton, QLineEdit, QApplication
 from PyQt5.QtGui import QStandardItemModel, QStandardItem
-from qgis.core import QgsProject, QgsVectorLayer, Qgis, QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsSelectionContext, QgsFeature, QgsPointXY, QgsGeometry, QgsSettings, QgsMapLayer
+from qgis.core import QgsProject, QgsVectorLayer, Qgis, QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsSelectionContext, QgsFeature, QgsPointXY, QgsGeometry, QgsSettings, QgsMapLayer, QgsJsonExporter, QgsTask, QgsApplication
 import processing
-from qgis.gui import QgsMapToolEmitPoint, QgsHighlight, QgsMapToolIdentify
+from qgis.gui import QgsMapToolEmitPoint, QgsHighlight
 from .generalfunctions import *
 # Initialize Qt resources from file resources.py
 from .resources import *
@@ -635,34 +635,103 @@ class CQAFabric:
         
             
             feature_ids = [f.id() for f in Define_Layer.getFeatures()]  # Get all feature IDs
-            
-            for feature_id in feature_ids:
-                Define_Layer.selectByIds([feature_id])
-                box = Define_Layer.boundingBoxOfSelected()
-                # match the box projection to the map projection
-                if not box.isNull():
-                    # Set the extent of the map canvas to the bounding box of the selected features
-                    self.iface.mapCanvas().setDestinationCrs(Define_Layer.crs())
-                    self.iface.mapCanvas().setExtent(box)
-                    self.iface.mapCanvas().refresh()
-                geometry = Define_Layer.getGeometry(feature_id)
-                context = QgsSelectionContext()
-                context.setScale(10000)  # Set to the lowest scale
-                xform = QgsCoordinateTransform(Define_Layer.crs(), vector_tile_layer.crs(), QgsProject.instance())
-                geometry.transform(xform)
-                vector_tile_layer.selectByGeometry(geometry,context)
-                for feature in vector_tile_layer.selectedFeatures(): 
-                    uuid=feature.attributes()[0]
-                    ids.append(uuid)
+
+
+
+
+            if selected_layer in []: #:"locations"
+                    dissolved = processing.run("native:dissolve", {'INPUT': Define_Layer,'FIELD':[],'SEPARATE_DISJOINT':False, 'OUTPUT': 'TEMPORARY_OUTPUT'})['OUTPUT']
+                    dissolved_features = list(dissolved.getFeatures())
+
+                    # Use QgsJsonExporter to export selected features to GeoJSON    
+                    exporter = QgsJsonExporter(dissolved)
+                    exporter.setincludeattributes = False
+                    exporter.setincludegeometry = True
+
+                    geojson_str = exporter.exportFeatures(dissolved_features)  
+
+                    if geojson_str is None:
+                        self.iface.messageBar().pushMessage("Error", "Failed to export features to GeoJSON.", level=Qgis.Critical)
+                        return False
+
+                    try:
+                        # Save the GeoJSON to a file
+                        output_file = os.path.join(temp_dir, "selected_features_temp.geojson")
+                        with open(output_file, "w") as f:
+                            f.write(geojson_str)
+
+                        input_file = output_file
+                        output_file = os.path.join(temp_dir, "selected_features.geojson")
                         
-                # Create a new GeoJSON file with the UUIDs
-                uuidjson_file = os.path.join(temp_dir, "selected_uuids.json")
-                # Create a new GeoJSON file with the UUIDs
-                with open(uuidjson_file, "w") as f:
-                    json.dump(ids, f, indent=2)
-                self.dlg.infoBox.setText("Retrieving " + str(len(ids)) + " ids data ...")
-                self.dlg.infoBox.setStyleSheet("color: black;")
-                QApplication.processEvents()
+                        # Load the GeoJSON file
+                        with open(input_file, "r") as f:
+                            geojson_data = json.load(f)
+
+                        # Extract only the geometry part
+                        geometries = [feature["geometry"] for feature in geojson_data.get("features", [])]
+
+                        if not geometries:
+                            self.iface.messageBar().pushMessage("Error", "No geometries found in the GeoJSON.", level=Qgis.Critical)
+                            return False
+
+                        # Save the geometries to a new JSON file
+                        with open(output_file, "w") as f:
+                            json.dump(geometries[0], f, indent=2)
+                        
+                        # Delete the original file
+                        #os.remove(input_file)
+
+                        self.iface.messageBar().pushMessage("Success", f"GeoJSON exported to {output_file}", level=Qgis.Success)
+                    except Exception as e:
+                        self.iface.messageBar().pushMessage("Error", f"An error occurred: {str(e)}", level=Qgis.Critical)
+                        return False
+                    
+                    # string of geojson boundary to collect on
+                    with open(output_file, "r") as file:
+                        geojson = file.read()
+                        # recursive collect method
+                        ids = collect(json.loads(geojson),selected_vintage,apikey)
+                          
+                    # there's a chance certain points are perfectly on borders of boundaries, account for rare chance of duplicates
+                    ids = list(set(ids))
+                    os.remove(os.path.join(temp_dir, "selected_features_temp.geojson"))
+                    os.remove(os.path.join(temp_dir, "selected_features.geojson"))
+                    uuidjson_file = os.path.join(temp_dir, "selected_uuids.json")
+                    # Create a new GeoJSON file with the UUIDs
+                    with open(uuidjson_file, "w") as f:
+                        json.dump(ids, f, indent=2)
+                    self.dlg.infoBox.setText("Retrieving " + str(len(ids)) + " ids data ...")
+                    self.dlg.infoBox.setStyleSheet("color: black;")
+                    QApplication.processEvents()
+            else:
+                for feature_id in feature_ids:
+                    Define_Layer.selectByIds([feature_id])
+                    box = Define_Layer.boundingBoxOfSelected()
+                    # match the box projection to the map projection
+                    if not box.isNull():
+                        # Set the extent of the map canvas to the bounding box of the selected features
+                        self.iface.mapCanvas().setDestinationCrs(Define_Layer.crs())
+                        self.iface.mapCanvas().setExtent(box)
+                        self.iface.mapCanvas().refresh()
+                    geometry = Define_Layer.getGeometry(feature_id)
+                    context = QgsSelectionContext()
+                    context.setScale(10000)
+                    xform = QgsCoordinateTransform(Define_Layer.crs(), vector_tile_layer.crs(), QgsProject.instance())
+                    geometry.transform(xform)
+                    vector_tile_layer.selectByGeometry(geometry,context)
+                    
+                    for feature in vector_tile_layer.selectedFeatures(): 
+                        uuid=feature.attributes()[0]
+                        ids.append(uuid)
+                            
+                    # Create a new GeoJSON file with the UUIDs
+                    uuidjson_file = os.path.join(temp_dir, "selected_uuids.json")
+                    # Create a new GeoJSON file with the UUIDs
+                    with open(uuidjson_file, "w") as f:
+                        json.dump(ids, f, indent=2)
+                    self.dlg.infoBox.setText("Retrieving " + str(len(ids)) + " ids data ...")
+                    self.dlg.infoBox.setStyleSheet("color: black;")
+                    QApplication.processEvents()
                 
             # Get the list of fields from selectedFeaturesLw list widget
             selected_fields = []
@@ -707,6 +776,40 @@ class CQAFabric:
                 self.dlg.infoBox.setText(str(len(ids)) + " ids data retrieved successfully")
                 self.dlg.infoBox.setStyleSheet("color: green;")
 
+    def SetDataModel(self, model, data, selected_vintage, selected_layer):
+        """
+        Set up the data model for a QTableView with the given data.
+    
+        This function populates a QStandardItemModel with data, setting up headers
+        and rows based on the structure of the input data. It handles both
+        dictionary-based and list-based data structures.
+    
+        Parameters:
+        model (QStandardItemModel): The model to be populated with data.
+        data (list): A list of dictionaries or a list of lists containing the data to display.
+        selected_vintage (str): The selected vintage of the data, used for retrieving field display names.
+        selected_layer (str): The selected layer of the data, used for retrieving field display names.
+    
+        Returns:
+        None: This function modifies the provided model in-place and doesn't return any value.
+        """
+        if isinstance(data[0], dict):
+            headers = list(data[0].keys())
+            displayname_dict = getfieldsdisplayname(selected_vintage, selected_layer, apikey)
+            headers_display = []
+            for r in headers:
+                headers_display.append(displayname_dict[r] if r in displayname_dict.keys() else r)  
+            model.setHorizontalHeaderLabels(headers_display)
+    
+            # Populate the table with data
+            for row_data in data:
+                row_items = [QStandardItem(str(row_data[key])) for key in headers]
+                model.appendRow(row_items)
+        else:
+            # If data is a list of lists, populate directly
+            for row_data in data:
+                row_items = [QStandardItem(str(value)) for value in row_data]
+                model.appendRow(row_items)
 
     def SetDataModel(self, model, data,selected_vintage,selected_layer):
         if isinstance(data[0], dict):
