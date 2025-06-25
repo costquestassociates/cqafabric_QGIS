@@ -988,10 +988,13 @@ class CQAFabric:
                     if key == "features":
                         for item in value:
                             coordinates =item['geometry']['coordinates']
+                            sourcekey = item['properties']['id']
                             # Create a list of dictionaries with latitude and longitude
                             coordinates_data = [{
                                 "latitude": coordinates[1],
-                                "longitude": coordinates[0]
+                                "longitude": coordinates[0],
+                                "sourcekey": sourcekey
+
                                 }]
                             data_1 = locatefabric(apikey, selected_vintage, coordinates_data)
                             
@@ -1036,16 +1039,19 @@ class CQAFabric:
             if coordinates_1[1]>0:
                 coordinates_data = [{
                     "latitude": coordinates[1],
-                    "longitude": coordinates[0]
+                    "longitude": coordinates[0],
+                    "sourcekey": 1
                     }]
             else:
                 coordinates_data = [{
                     "latitude": coordinates[0],
-                    "longitude": coordinates[1]
+                    "longitude": coordinates[1],
+                    "sourcekey": 1
                     }]
             data_1 = locatefabric(apikey, selected_vintage, coordinates_data)
             
             if data_1:
+                self.dlg.infoBox.setText("Locate Completed. Retrieving data...")
                 location_id = [item.get('location_id') for item in data_1 if isinstance(item, dict)][0]
                 if location_id:
                     data_2 = translatefabric(apikey, selected_vintage, location_id, None, None)

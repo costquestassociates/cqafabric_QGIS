@@ -20,7 +20,7 @@
    </sizepolicy>
   </property>
   <property name="windowTitle">
-   <string>Address Search for Fabric Data</string>
+   <string>Locate Fabric Data</string>
   </property>
   <widget class="QDialogButtonBox" name="buttonBox">
    <property name="geometry">
@@ -62,7 +62,7 @@
      <rect>
       <x>10</x>
       <y>10</y>
-      <width>91</width>
+      <width>111</width>
       <height>22</height>
      </rect>
     </property>
@@ -87,9 +87,9 @@
    <widget class="QLineEdit" name="infoBox_input">
     <property name="geometry">
      <rect>
-      <x>110</x>
+      <x>130</x>
       <y>10</y>
-      <width>741</width>
+      <width>721</width>
       <height>21</height>
      </rect>
     </property>

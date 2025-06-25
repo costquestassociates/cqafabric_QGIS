@@ -278,8 +278,6 @@ def summarizefabricloc(geojson,selected_vintage,fieldlist,apikey):
         data = json.loads(response.read())
         if response.getcode() == 200:
             return data
-        else:
-            print("Failed to fetch vintages. HTTP Code:", response.getcode())
     except Exception as e:
         print(e)
 
@@ -302,10 +300,7 @@ def geocodeautocomplete(apikey, address):
         response = urllib.request.urlopen(req)
         if response.getcode() == 200:
             data = json.loads(response.read())
-            return data
-        else:
-            print("Failed to fetch address. HTTP Code:", response.getcode())
-            return None   
+            return data 
     except Exception as e:
         print(e)
         return None
@@ -364,10 +359,7 @@ def locatefabric(apikey, vintage, data):
         response = urllib.request.urlopen(req)
         if response.getcode() == 200:
             result = json.loads(response.read())
-            return result
-        else:
-            print("Failed to fetch address. HTTP Code:", response.getcode())
-            return None   
+            return result 
     except Exception as e:
         print(e)
         return None
@@ -408,10 +400,7 @@ def translatefabric(apikey, vintage, id, src, dest):
         response = urllib.request.urlopen(req)
         if response.getcode() == 200:
             result = json.loads(response.read())
-            return result
-        else:
-            print("Failed to fetch address. HTTP Code:", response.getcode())
-            return None   
+            return result  
     except Exception as e:
         print(e)
         return None
