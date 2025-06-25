@@ -109,8 +109,6 @@ class RetrieveDataDialog(QtWidgets.QDialog, FORM_CLASS):
             self.layerChanged.emit(self._layer)
             iface.setActiveLayer(layer)
             self.label_layer_3.setStyleSheet("")
-            self.progressBar.reset()
-
 
     def _layerFieldChanged(self, label: str):
         self._featureLabel = label

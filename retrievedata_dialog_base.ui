@@ -533,6 +533,9 @@ color: rgb(0, 0, 255);</string>
    </property>
   </widget>
   <widget class="QPushButton" name="loadGeometryBtn">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
    <property name="geometry">
     <rect>
      <x>760</x>
@@ -555,12 +558,10 @@ color: rgb(0, 0, 255);</string>
     </font>
    </property>
    <property name="styleSheet">
-    <string notr="true">background-color: rgb(244, 239, 239);
-border-color: rgb(255, 170, 255);
-color: rgb(52, 116, 14);</string>
+    <string notr="true">color: grey</string>
    </property>
    <property name="text">
-    <string>Load Geometry</string>
+    <string>Export to Map</string>
    </property>
    <property name="icon">
     <iconset>
@@ -599,9 +600,7 @@ color: rgb(52, 116, 14);</string>
     </font>
    </property>
    <property name="styleSheet">
-    <string notr="true">background-color: rgb(244, 239, 239);
-border-color: rgb(255, 170, 255);
-color: rgb(52, 116, 14);</string>
+    <string notr="true">color:grey</string>
    </property>
    <property name="text">
     <string>Summarize</string>
@@ -618,6 +617,9 @@ color: rgb(52, 116, 14);</string>
    </property>
   </widget>
   <widget class="QPushButton" name="populatetableBtn">
+   <property name="enabled">
+    <bool>true</bool>
+   </property>
    <property name="geometry">
     <rect>
      <x>760</x>
@@ -640,9 +642,7 @@ color: rgb(52, 116, 14);</string>
     </font>
    </property>
    <property name="styleSheet">
-    <string notr="true">background-color: rgb(244, 239, 239);
-border-color: rgb(255, 170, 255);
-color: rgb(52, 116, 14);</string>
+    <string notr="true">color: green;</string>
    </property>
    <property name="text">
     <string>Show Attribute</string>

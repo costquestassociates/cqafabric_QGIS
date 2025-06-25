@@ -140,10 +140,15 @@ def bulk(uuidjson,fieldlist,selected_vintage,selected_layer,apikey,progressbar=N
     
 
 
-def collect(geojson,selected_vintage):
+def collect(geojson,selected_vintage,apikey):
     global ids
     global collect_calls
     global divide_calls
+    # if collect_calls is not defined, initialize it
+    if 'collect_calls' not in globals():
+        collect_calls = 0
+        divide_calls = 0
+        ids = []            
     collect_calls += 1
     collect_ids = requests.post(baseuri + "fabric/" + selected_vintage + "/collect", json=geojson, headers={"apikey": apikey}).json()
     if len(collect_ids)>=5000:
@@ -151,10 +156,11 @@ def collect(geojson,selected_vintage):
         for db in divide_results:
             divide_calls += 1
             print("divide " + str(divide_calls))
-            collect(geojson,selected_vintage)
+            collect(geojson,selected_vintage,apikey)
     else:
         print("adding " + str(len(collect_ids)) + " ids")
         ids = ids + collect_ids
+    return ids
 
 
 def individualdata(selected_vintage,selected_layer,apikey,uuid):
@@ -272,8 +278,6 @@ def summarizefabricloc(geojson,selected_vintage,fieldlist,apikey):
         data = json.loads(response.read())
         if response.getcode() == 200:
             return data
-        else:
-            print("Failed to fetch vintages. HTTP Code:", response.getcode())
     except Exception as e:
         print(e)
 
@@ -296,10 +300,7 @@ def geocodeautocomplete(apikey, address):
         response = urllib.request.urlopen(req)
         if response.getcode() == 200:
             data = json.loads(response.read())
-            return data
-        else:
-            print("Failed to fetch address. HTTP Code:", response.getcode())
-            return None   
+            return data 
     except Exception as e:
         print(e)
         return None
@@ -358,10 +359,7 @@ def locatefabric(apikey, vintage, data):
         response = urllib.request.urlopen(req)
         if response.getcode() == 200:
             result = json.loads(response.read())
-            return result
-        else:
-            print("Failed to fetch address. HTTP Code:", response.getcode())
-            return None   
+            return result 
     except Exception as e:
         print(e)
         return None
@@ -402,10 +400,7 @@ def translatefabric(apikey, vintage, id, src, dest):
         response = urllib.request.urlopen(req)
         if response.getcode() == 200:
             result = json.loads(response.read())
-            return result
-        else:
-            print("Failed to fetch address. HTTP Code:", response.getcode())
-            return None   
+            return result  
     except Exception as e:
         print(e)
         return None
