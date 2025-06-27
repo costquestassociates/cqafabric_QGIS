@@ -202,9 +202,8 @@ def getfieldsinfo(vintage:str,layer:str,apikey):
         response = urllib.request.urlopen(req)
         if response.getcode() == 200:
             data = json.loads(response.read())
-            return data
-            #fieldnames = [item.get('fieldname') for item in data if isinstance(item, dict)]
-
+            fieldnames = [item.get('fieldname') for item in data if isinstance(item, dict)]
+            return fieldnames
         else:
             print("Failed to fetch fields information. HTTP Code:", response.getcode())
 
@@ -331,7 +330,7 @@ def geocodestructured(apikey, address, city, state,  zipcode):
         return None
 
 
-def locatefabric(apikey, vintage, data):
+def locatefabric(apikey, vintage, sourcedata):
     ''' example: 
     data = [{
     "latitude": 36.66057141,
@@ -351,18 +350,37 @@ def locatefabric(apikey, vintage, data):
         'Cache-Control': 'no-cache',
         'apikey': apikey,
         }
-
-        data = json.dumps(data)
+        data = json.dumps(sourcedata)
         req = urllib.request.Request(url, headers=hdr, data = bytes(data.encode("utf-8")))
 
         req.get_method = lambda: 'POST'
         response = urllib.request.urlopen(req)
         if response.getcode() == 200:
             result = json.loads(response.read())
-            return result 
+            return result
+
+               
     except Exception as e:
-        print(e)
-        return None
+        try:
+            result = []
+            for dic in sourcedata:
+                url = f"https://api.costquest.com/fabricext/{vintage}/locate?latitude={dic["latitude"]}&longitude={dic["longitude"]}"
+                req = urllib.request.Request(url, headers=hdr)
+
+                req.get_method = lambda: 'GET'
+                response = urllib.request.urlopen(req)
+                if response.getcode() == 200:
+                    result_temp = json.loads(response.read())
+                    # update the sourcekey in the result_temp
+                    for dic_temp in result_temp:
+                        dic_temp["sourcekey"] = dic["sourcekey"]
+                    result.extend(result_temp)
+                else:
+                    result.append({"latitude": None, "distancem": None, "longitude": None, "matchtype": None, "sourcekey": dic["sourcekey"], "location_id": None})
+            return result
+        except Exception as e:
+            print(e)
+            return None
     
     '''example result = [{
         "latitude": 36.66057141,
@@ -380,23 +398,23 @@ def locatefabric(apikey, vintage, data):
         "location_id": 1000008779
     }'''
 
-def translatefabric(apikey, vintage, id, src, dest):
+def translatefabric(apikey, vintage, data, src, dest):
     if not src:
         src= "location_id"
     if not dest:
         dest= "uuid"
     try:
-        url = f"https://api.costquest.com/fabricext/{vintage}/translate?id={id}&src={src}&dst={dest}"
+        url = f"https://api.costquest.com/fabricext/{vintage}/translate"
 
         hdr ={
         # Request headers
         'Cache-Control': 'no-cache',
         'apikey': apikey,
         }
+        data = json.dumps(data)
+        req = urllib.request.Request(url, headers=hdr, data = bytes(data.encode("utf-8")))
 
-        req = urllib.request.Request(url, headers=hdr)
-
-        req.get_method = lambda: 'GET'
+        req.get_method = lambda: 'POST'
         response = urllib.request.urlopen(req)
         if response.getcode() == 200:
             result = json.loads(response.read())
@@ -409,3 +427,4 @@ def translatefabric(apikey, vintage, id, src, dest):
     "uuid": "affc4405-eb13-41cf-afa4-2b5142b95338",
     "location_id": 1340235422
     }]'''
+    
