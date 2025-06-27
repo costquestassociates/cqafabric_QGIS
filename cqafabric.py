@@ -704,9 +704,10 @@ class CQAFabric:
         if isinstance(data[0], dict):
             headers = list(data[0].keys())
             displayname_dict = getfieldsdisplayname(selected_vintage, selected_layer, apikey)
-            headers_display = []
-            for r in headers:
-                headers_display.append(displayname_dict[r] if r in displayname_dict.keys() else r)  
+            ordered_keys = list(displayname_dict.keys())
+            ordered_keys.reverse()
+            headers.sort(key=lambda x: ordered_keys.index(x) if x in ordered_keys else 9999)
+            headers_display = [displayname_dict[r] if r in displayname_dict else r for r in headers] 
             model.setHorizontalHeaderLabels(headers_display)
     
             # Populate the table with data
