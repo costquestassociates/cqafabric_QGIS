@@ -29,7 +29,7 @@ def geocodeautocomplete(apikey, address):
         return None
 
 
-def locatefabric(apikey, vintage, data):
+def locatefabric(apikey, vintage, origdata):
     ''' example: 
     data = [{
     "latitude": 36.66057141,
@@ -49,19 +49,32 @@ def locatefabric(apikey, vintage, data):
         'Cache-Control': 'no-cache',
         'apikey': apikey,
         }
-
-        data = json.dumps(data)
-        print(data)
+        data = json.dumps(origdata)
         req = urllib.request.Request(url, headers=hdr, data = bytes(data.encode("utf-8")))
 
         req.get_method = lambda: 'POST'
         response = urllib.request.urlopen(req)
         if response.getcode() == 200:
             result = json.loads(response.read())
-            return result
+            return result   
     except Exception as e:
-        print(e)
-        return None
+        print("Failed to locate fabric.")
+        result = []
+        for dic in origdata:
+            url = f"https://api.costquest.com/fabricext/{vintage}/locate?latitude={dic["latitude"]}&longitude={dic["longitude"]}"
+            req = urllib.request.Request(url, headers=hdr)
+
+            req.get_method = lambda: 'GET'
+            response = urllib.request.urlopen(req)
+            if response.getcode() == 200:
+                result_temp = json.loads(response.read())
+                # update the sourcekey in the result_temp
+                for dic_temp in result_temp:
+                    dic_temp["sourcekey"] = dic["sourcekey"]
+                result.extend(result_temp)
+            else:
+                result.append({"latitude": None, "distancem": None, "longitude": None, "matchtype": None, "sourcekey": dic["sourcekey"], "location_id": None})
+        print(result) 
     
     '''example result = [{
         "latitude": 36.66057141,
@@ -138,4 +151,3 @@ data_1 = locatefabric(apikey, '202406', coordinates_data)
 if data_1:
     location_id = [item.get('location_id') for item in data_1 if isinstance(item, dict)]
 
-print(location_id)

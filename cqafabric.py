@@ -37,7 +37,7 @@ from .cqafabric_dialog import CQAFabricDialog
 from .addfabrictiles_dialog import AddFabricTilesDialog
 from .retrievedata_dialog import RetrieveDataDialog
 from .identifydata_dialog import IdentifyDataDialog
-from .addresssearch_dialog import AddressSearchDialog
+from .locatefabric_dialog import LocateFabricDialog
 import os.path
 import json
 import csv
@@ -232,11 +232,11 @@ class CQAFabric:
         # Create action for address searching in QGIS3 in a plugin
         icon_path_4 = ':/plugins/cqafabric/icons/icon4.png'
         icon3 = QIcon(icon_path_4)
-        self.actionAddressSearch = QAction(icon3, self.tr("Locate Fabric"))
-        self.menu.addAction(self.actionAddressSearch)
-        toolButtonMenu.addAction(self.actionAddressSearch)
-        self.actionAddressSearch.triggered.connect(self.AddressSearch)
-        self.toolbar.addAction(self.actionAddressSearch)
+        self.actionLocateFabric = QAction(icon3, self.tr("Locate Fabric"))
+        self.menu.addAction(self.actionLocateFabric)
+        toolButtonMenu.addAction(self.actionLocateFabric)
+        self.actionLocateFabric.triggered.connect(self.LocateFabric)
+        self.toolbar.addAction(self.actionLocateFabric)
         
 
 
@@ -301,14 +301,14 @@ class CQAFabric:
             # enable the retrieve data button
             self.actionRetrieveData.setEnabled(True)
             self.actionIdentifyData.setEnabled(True)
-            self.actionAddressSearch.setEnabled(True)
+            self.actionLocateFabric.setEnabled(True)
             self.actionValidateAPIKey.setText(self.tr("Log Out"))
             
         else:
         # Show the authentication dialog
             self.actionRetrieveData.setEnabled(False)
             self.actionIdentifyData.setEnabled(False)
-            self.actionAddressSearch.setEnabled(False)
+            self.actionLocateFabric.setEnabled(False)
         
 
             
@@ -326,7 +326,7 @@ class CQAFabric:
                 # change the button text to "Log Out"
                 self.actionRetrieveData.setEnabled(True)
                 self.actionIdentifyData.setEnabled(True)
-                self.actionAddressSearch.setEnabled(True)
+                self.actionLocateFabric.setEnabled(True)
                 self.actionValidateAPIKey.setText(self.tr("Log Out"))
                 
             else:
@@ -344,7 +344,7 @@ class CQAFabric:
         # Close the authentication dialog
         self.actionRetrieveData.setEnabled(False)
         self.actionIdentifyData.setEnabled(False)
-        self.actionAddressSearch.setEnabled(False)
+        self.actionLocateFabric.setEnabled(False)
         self.actionValidateAPIKey.setText(self.tr("Log In"))
         self.auth_dialog.show()
         
@@ -418,7 +418,7 @@ class CQAFabric:
 
 
         # if populatetableBtn is clicked, show the table with the selected features
-        self.dlg.loadGeometryBtn.clicked.connect(lambda: self.load_geometry_result(vector_tile_layer,define_layer_name,selected_layer,selected_vintage,combined_data))
+        self.dlg.saveBtn.clicked.connect(lambda: self.load_geometry_result(vector_tile_layer,define_layer_name,selected_layer,selected_vintage,combined_data))
 
         self.dlg.populatetableBtn.clicked.connect(lambda: self.populate_table_result())
 
@@ -458,7 +458,7 @@ class CQAFabric:
                     layer.dataProvider().addFeatures([newfeature])
             layer.commitChanges()      
 
-            DateStamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            DateStamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
             csvoutput_file = os.path.join(temp_dir, f"{resultName}_{DateStamp}.csv")
             
             with open(csvoutput_file, mode="w", newline="") as file:
@@ -473,22 +473,44 @@ class CQAFabric:
                 # Write each inner dictionary as a row
                 for inner_dict in combined_data.values():
                     writer.writerow(inner_dict)
-            
         
             joinshp=processing.run("native:joinattributestable", {'INPUT':layer,'FIELD':'uuid','INPUT_2':csvoutput_file,'FIELD_2':'uuid','FIELDS_TO_COPY':[],'METHOD':1,'DISCARD_NONMATCHING':False,'PREFIX':'','OUTPUT':'TEMPORARY_OUTPUT'})['OUTPUT']
             joinshp.setName(resultName)
             QgsProject.instance().addMapLayer(joinshp)
             self.dlg.infoBox.setText(f"{resultName}" + " layer with selected fields added to the map.")
             self.dlg.infoBox.setStyleSheet("color: green;")
-            self.dlg.loadGeometryBtn.setEnabled(False)
-            self.dlg.loadGeometryBtn.setStyleSheet("color: gray;")
+            self.dlg.saveBtn.setEnabled(False)
+            self.dlg.saveBtn.setStyleSheet("color: gray;")
             # Update the progress bar
             self.dlg.progressBar.setValue(100)
             
+    def load_csv_result(self,selected_layer,selected_vintage,combined_data,csv_filename):
+            self.dlg.progressBar.reset()
+            resultName = f"{csv_filename}_{selected_layer}{selected_vintage}"
+            DateStamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+            csvoutput_file = os.path.join(temp_dir, f"{resultName}_{DateStamp}.csv")
+            
+            with open(csvoutput_file, mode="w", newline="") as file:
+            # Get all keys from the first inner dictionary (assuming all dictionaries have the same structure)
+                fieldnames = list(next(iter(combined_data.values())).keys())
+                writer = csv.DictWriter(file, fieldnames=fieldnames)
+                # Write the header
+                writer.writeheader()
+                # Write each inner dictionary as a row
+                for inner_dict in combined_data.values():
+                    writer.writerow(inner_dict)
+            
         
+            self.dlg.infoBox.setText(f"{csvoutput_file}" + " file with selected fields added to the map.")
+            self.dlg.infoBox.setStyleSheet("color: green;")
+            self.dlg.saveBtn.setEnabled(False)
+            self.dlg.saveBtn.setStyleSheet("color: gray;")
+            # Update the progress bar
+            self.dlg.progressBar.setValue(100)
+
     def populate_table_result(self): 
         # deactive the button
-        self.dlg.loadGeometryBtn.setEnabled(False)
+        self.dlg.saveBtn.setEnabled(False)
         self.dlg.progressBar.reset()
         global vector_tile_layer      
         global define_layer_name
@@ -680,8 +702,8 @@ class CQAFabric:
                     self.dlg.tableResult.setRowHeight(row, 20)
                 self.dlg.infoBox.setText(str(len(ids)) + " ids data retrieved successfully. Ready to Export.")
                 self.dlg.infoBox.setStyleSheet("color: green;")
-                self.dlg.loadGeometryBtn.setEnabled(True)
-                self.dlg.loadGeometryBtn.setStyleSheet("color: green;")
+                self.dlg.saveBtn.setEnabled(True)
+                self.dlg.saveBtn.setStyleSheet("color: green;")
                 return vector_tile_layer,define_layer_name, selected_layer, selected_vintage, combined_data
 
     def SetDataModel(self, model, data, selected_vintage, selected_layer):
@@ -855,7 +877,7 @@ class CQAFabric:
             selected_vintage = url.split("fabric/")[1].split("/")[0]
             selected_layer = url.split("tiles/")[1].split("/")[0]
             
-            fieldinfo = getfieldsinfo(selected_vintage, selected_layer, apikey)
+            fieldnames = getfieldsinfo(selected_vintage, selected_layer, apikey)
             
             # Set up highlight variable
 
@@ -900,33 +922,22 @@ class CQAFabric:
             
             # Display the data in a scrollable message box
             if ids:
+                displayname_dict = getfieldsdisplayname(selected_vintage,selected_layer,apikey)
+                ordered_keys = list(displayname_dict.keys())
+                ordered_keys.reverse()
                 for uuid in ids:
                     data = individualdata(selected_vintage, selected_layer, apikey, uuid)
                     # Format the data as a list of strings for the scrollable message box
                     #displayname = [item.get('displayname') for item in data if isinstance(item, dict) and item.get('fieldname') == key][0]
                     content_Dict ={}
-                    for key, value in data.items():
-                        try:
-                            
-                            displayname = [item.get('displayname') for item in fieldinfo if isinstance(item, dict) and item.get('fieldname') == key][0]
-                            if not displayname:
-                                displayname = key
-                        except:
-                            displayname = key
-                        try:
-                            listorder = [item.get('listorder') for item in fieldinfo if isinstance(item, dict) and item.get('fieldname') == key][0]
-                            if not listorder :
-                                listorder = max(content_Dict.keys()) + 1
-                        except:
-                            if 9999 in content_Dict.keys():
-                                listorder = max(content_Dict.keys()) + 1
-                            else:
-                                listorder = 9999
-                        content_Dict[listorder] = f"<tr><td style='border: 1px solid black;'><b>{displayname}</b></td><td style='border: 1px solid black;'>{value}</td></tr>"
-                    # Sort the content dictionary by listorder and generate HTML rows
-                    sorted_content = sorted(content_Dict.items(), key=lambda x: x[0])
-                    html_rows = ''.join(item[1] for item in sorted_content)
-                    
+                    headers= list(data.keys())
+                    headers.sort(key=lambda x: ordered_keys.index(x) if x in ordered_keys else 9999)
+                    html_rows =''
+                    for key in headers:
+                        value = data.get(key)
+                        displayname = displayname_dict.get(key) if displayname_dict.get(key) else key
+                        html_rows = html_rows + f"<tr><td style='border: 1px solid black;'><b>{displayname}</b></td><td style='border: 1px solid black;'>{value}</td></tr>"
+                
                     # Create the complete HTML content for the message box
                     html_content = f"""
                     <html>
@@ -958,8 +969,8 @@ class CQAFabric:
                 return False            
 
 
-    def AddressSearch(self):
-        self.dlg = AddressSearchDialog()
+    def LocateFabric(self):
+        self.dlg = LocateFabricDialog()
         self.dlg.setFixedSize(self.dlg.size())
 
         # Get the vintages from the API
@@ -970,116 +981,175 @@ class CQAFabric:
         self.dlg.show()
 
         # if populatetableBtn is clicked, show the table with the selected features
-        self.dlg.showfabricBtn.clicked.connect(lambda: self.show_geocode_fabric())
+        self.dlg.showBtn.clicked.connect(lambda: self.show_geocode_fabric())
+        self.dlg.saveBtn.clicked.connect(lambda: self.load_csv_result('locations',selected_vintage,combined_data,csv_filename))
+
 
 
     def show_geocode_fabric(self):
+        global selected_vintage
+        global combined_data
+        global csv_filename
+
+        self.dlg.progressBar.reset()
         model = QStandardItemModel()
         headers = None
         selected_vintage = self.dlg.comboBox_vintage.currentText()  
         selected_layer = "locations"
         n = 0
-        if self.dlg.comboBox_type.currentText()== "Address":
-            self.dlg.infoBox.setText("Searching for address: "+ self.dlg.infoBox_input.text())
-            self.dlg.infoBox.setStyleSheet("color: black;")
-            data = geocodeautocomplete(apikey, self.dlg.infoBox_input.text())
-            if data:
-                for key, value in data.items():
-                    coordinates = None
-                    if key == "features":
-                        for item in value:
-                            coordinates =item['geometry']['coordinates']
-                            sourcekey = item['properties']['id']
-                            # Create a list of dictionaries with latitude and longitude
-                            coordinates_data = [{
-                                "latitude": coordinates[1],
-                                "longitude": coordinates[0],
-                                "sourcekey": sourcekey
+        if self.dlg.AddrButton.isChecked():
+            coordinates_data = []
+            if not self.dlg.checkBox_CSV.isChecked():
+                self.dlg.infoBox.setText("Searching for single address")
+                self.dlg.infoBox.setStyleSheet("color: black;")
+                addresstexts = [{1:self.dlg.infoBox_input.text()}]
+            else:
+                if self.dlg.mQgsFileWidget.filePath():
+                    # Read the CSV file and get the texts from address column and sourcekey column. put them in a list [{sourcekey: address}]
+                    self.dlg.infoBox.setText("Searching for addresses from CSV file")
+                    self.dlg.infoBox.setStyleSheet("color: black;")
+                    addresstexts = []
+                    with open(self.dlg.mQgsFileWidget.filePath(), newline='', encoding='utf-8') as csvfile:
+                        reader = csv.DictReader(csvfile)
+                        for row in reader:
+                            # read columnname regardless of case
+                            address_col = next((col for col in row.keys() if col.lower() == 'address'), None)
+                            sourcekey_col = next((col for col in row.keys() if col.lower() == 'sourcekey'), None)
+                            if address_col and sourcekey_col:
+                                addresstexts.append({row[sourcekey_col]: row[address_col]})
+                            else:
+                                self.dlg.infoBox.setText("CSV file should contain 'address' and 'sourcekey' columns.")
+                                self.dlg.infoBox.setStyleSheet("color: red;")
+                                return
+                    # get csv file name no extension
+                    csv_filename = os.path.splitext(os.path.basename(self.dlg.mQgsFileWidget.filePath()))[0]
+                else:
+                    self.dlg.infoBox.setText("CSV file is required for this operation.")
+                    self.dlg.infoBox.setStyleSheet("color: red;")
+                    return
+            for addresstext in addresstexts:
+                for sourcekey, address in addresstext.items():
+                    data = geocodeautocomplete(apikey, address)
+                    if data: 
+                        for key, value in data.items():
+                            coordinates = None
+                            if key == "features":
+                                for item in value:
+                                    coordinates =item['geometry']['coordinates']
+                                    # Create a list of dictionaries with latitude and longitude
+                                    coordinates_data.append ({
+                                        "latitude": coordinates[1],
+                                        "longitude": coordinates[0],
+                                        "sourcekey": sourcekey
+                                        })
+                                    
 
-                                }]
-                            data_1 = locatefabric(apikey, selected_vintage, coordinates_data)
-                            
-                            if data_1:
-                                location_id = [item.get('location_id') for item in data_1 if isinstance(item, dict)][0]
-                                if location_id:
-                                    data_2 = translatefabric(apikey, selected_vintage, location_id, None, None)
-                                    uuid = [item.get('uuid') for item in data_2 if isinstance(item, dict)][0]
-                                    data_3 = individualdata(selected_vintage, selected_layer, apikey, uuid)
-                                    # display the data in a QTableView
-                                    if not headers:
-                                        headers= list(data_3.keys())
-                                        displayname_dict = getfieldsdisplayname(selected_vintage,selected_layer,apikey)
-                                        headers_display = []
-                                        for r in headers:
-                                            headers_display.append(displayname_dict[r] if r in displayname_dict.keys() else r)
-                                            #sort headers_display based on the order of displayname_dict.values()
-                                            headers_display.sort(key=lambda x: displayname_dict.get(x, 9999))
-                                        model.setHorizontalHeaderLabels(headers_display)
-                                    # Populate the table with data
-                                    row_items = [QStandardItem(str(data_3[key])) for key in headers]
-                                    model.appendRow(row_items)
-                                    n += 1
+        elif self.dlg.CoorButton.isChecked():
+            coordinates_data = []
+            if not self.dlg.checkBox_CSV.isChecked():
+                self.dlg.infoBox.setText("Searching for single Coordinates")
+                self.dlg.infoBox.setStyleSheet("color: black;")
+                coordinates = self.dlg.infoBox_input.text().split(",")
+                # convert coordinates to float
+                coordinates_1 = [float(coord.strip()) for coord in coordinates]
+                if coordinates_1[1]>0:
+                    coordinates_data = [{
+                        "latitude": coordinates[1],
+                        "longitude": coordinates[0],
+                        "sourcekey": 1
+                        }]
+                else:
+                    coordinates_data = [{
+                        "latitude": coordinates[0],
+                        "longitude": coordinates[1],
+                        "sourcekey": 1
+                        }]
+            else:
+                if self.dlg.mQgsFileWidget.filePath():
+                    # Read the CSV file and get the texts from address column and sourcekey column. put them in a list [{sourcekey: address}]
+                    self.dlg.infoBox.setText("Searching for coordinates from CSV file")
+                    self.dlg.infoBox.setStyleSheet("color: black;")
 
-                self.dlg.tableResult_location.setModel(model)
+                    with open(self.dlg.mQgsFileWidget.filePath(), newline='', encoding='utf-8') as csvfile:
+                        reader = csv.DictReader(csvfile)
+                        for row in reader:
+                            lat_col = next((col for col in row.keys() if col.lower() == 'latitude'), None)
+                            lon_col = next((col for col in row.keys() if col.lower() == 'longitude'), None)
+                            sourcekey_col = next((col for col in row.keys() if col.lower() == 'sourcekey'), None)
+                            if lat_col and lon_col and sourcekey_col:
+                                coordinates_data.append({
+                            "latitude": row[lat_col],
+                            "longitude": row[lon_col],
+                            "sourcekey": row[sourcekey_col]
+                            })
+                            else:
+                                self.dlg.infoBox.setText("CSV file should contain 'latitude', 'longitude', and'sourcekey' columns.")
+                                self.dlg.infoBox.setStyleSheet("color: red;")
+                                return
+                else:
+                    self.dlg.infoBox.setText("CSV file is required for this operation.")
+                    self.dlg.infoBox.setStyleSheet("color: red;")
+                    return
+        self.dlg.infoBox.setText(str(coordinates_data))
+        
+        data_1 = locatefabric(apikey, selected_vintage, coordinates_data)
+        if data_1:
+            self.dlg.infoBox.setText("Locate fabrics completed successfully, starting to fetch data for each fabric.")
+            locationid_key = {item.get('location_id'):item.get('sourcekey') for item in data_1 if isinstance(item, dict)}
+            if locationid_key:
+                if len(locationid_key)>1000:
+                    self.dlg.infoBox.setText("More than 5000 locations found, fetching data for only 1000.")
+                    locationid_key = list(locationid_key.items())[:1000]
+            
+                data_2 = translatefabric(apikey, selected_vintage, list(locationid_key.keys()), None, None)
+                    
+                ids = [item.get('uuid') for item in data_2 if isinstance(item, dict)]
+                fieldnames = getfieldsinfo(selected_vintage, selected_layer, apikey)
+                displayname_dict = getfieldsdisplayname(selected_vintage,selected_layer,apikey)
+                ordered_keys = list(displayname_dict.keys())
+                ordered_keys.reverse()
+                uuidjson_file = os.path.join(temp_dir, "selected_uuids.json")
+                # Create a new GeoJSON file with the UUIDs
+                with open(uuidjson_file, "w") as f:
+                    json.dump(ids, f, indent=2)
+                combined_data = bulk(uuidjson_file,fieldnames,selected_vintage,selected_layer,apikey,self.dlg.progressBar)
+                data = list(combined_data.values())
+                for item in data:
+                    item['sourcekey'] = locationid_key.get(item['location_id'])
+
+                """
+                Populate the tableResult QTableView with data.
+
+                :param table_view: The QTableView instance to populate.
+                :param data: A list of dictionaries or a list of lists containing the data to display.
+                """
+                # Create a model for the table
+                model = QStandardItemModel()
+
+                # Check if data is empty
+                if not data:
+                    self.dlg.tableResult.setModel(model)
+                    return
+
+                self.SetDataModel(model, data,selected_vintage,selected_layer)
+
+                # Set the model to the table view
+                self.dlg.tableResult.setModel(model)
                 # Set the column width to fit the content
                 for column in range(model.columnCount()):
-                    self.dlg.tableResult_location.resizeColumnToContents(column)
-                    # Set the row height to fit the content
-
-            self.dlg.infoBox.setText(str(n) + " locations found for the given address.")
-            self.dlg.infoBox.setStyleSheet("color: green;")
-
-
-
-        elif self.dlg.comboBox_type.currentText()== "Coordinates":
-            self.dlg.infoBox.setText("Searching for Coordinates: "+ self.dlg.infoBox_input.text())
-            self.dlg.infoBox.setStyleSheet("color: black;")
-            coordinates = self.dlg.infoBox_input.text().split(",")
-            # convert coordinates to float
-            coordinates_1 = [float(coord.strip()) for coord in coordinates]
-            if coordinates_1[1]>0:
-                coordinates_data = [{
-                    "latitude": coordinates[1],
-                    "longitude": coordinates[0],
-                    "sourcekey": 1
-                    }]
-            else:
-                coordinates_data = [{
-                    "latitude": coordinates[0],
-                    "longitude": coordinates[1],
-                    "sourcekey": 1
-                    }]
-            data_1 = locatefabric(apikey, selected_vintage, coordinates_data)
-            
-            if data_1:
-                self.dlg.infoBox.setText("Locate Completed. Retrieving data...")
-                location_id = [item.get('location_id') for item in data_1 if isinstance(item, dict)][0]
-                if location_id:
-                    data_2 = translatefabric(apikey, selected_vintage, location_id, None, None)
-                    uuid = [item.get('uuid') for item in data_2 if isinstance(item, dict)][0]
-                    data_3 = individualdata(selected_vintage, selected_layer, apikey, uuid)
-                    # display the data in a QTableView
-                    if not headers:
-                        headers= list(data_3.keys())
-                        displayname_dict = getfieldsdisplayname(selected_vintage,selected_layer,apikey)
-                        headers_display = []
-                        for r in headers:
-                            headers_display.append(displayname_dict[r] if r in displayname_dict.keys() else r)
-                            #sort headers_display based on the order of displayname_dict.values()
-                            headers_display.sort(key=lambda x: displayname_dict.get(x, 9999))
-                        model.setHorizontalHeaderLabels(headers_display)
-                    # Populate the table with data
-                    row_items = [QStandardItem(str(data_3[key])) for key in headers]
-                    model.appendRow(row_items)
-                    n += 1
-            self.dlg.tableResult_location.setModel(model)
-            # Set the column width to fit the content
-            for column in range(model.columnCount()):
-                self.dlg.tableResult_location.resizeColumnToContents(column)
+                    self.dlg.tableResult.resizeColumnToContents(column)
                 # Set the row height to fit the content
-            self.dlg.infoBox.setText(str(n) + " locations found for the given coordinates.")
-            self.dlg.infoBox.setStyleSheet("color: green;")
+                for row in range(model.rowCount()):
+                    self.dlg.tableResult.setRowHeight(row, 20)
+                self.dlg.infoBox.setText(str(len(ids)) + " ids data retrieved successfully. Ready to Export.")
+                self.dlg.infoBox.setStyleSheet("color: green;")
+                self.dlg.saveBtn.setEnabled(True)
+                self.dlg.saveBtn.setStyleSheet("color: green;")
+                return selected_layer, selected_vintage, combined_data,csv_filename
             
+
+
+               
 
     def on_active_layer_changed(self):
         layer = self.iface.activeLayer()
