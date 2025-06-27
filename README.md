@@ -35,7 +35,7 @@ QGIS plugin to use CQA Fabric APIs.</br>
     </li>
     <li><b>Locate Fabric</b><br>
     Get fabric location by address/coordinate.</br>
-    ![image](https://github.com/user-attachments/assets/4377ef72-ea0c-41fc-981a-538fdf775bd5)
+    ![image](https://github.com/user-attachments/assets/8ca5144c-d4d7-4d62-b5dc-c8716cf1958a)
     </br>
     </br></li>
     <li><b>User Authentication</b><br>
