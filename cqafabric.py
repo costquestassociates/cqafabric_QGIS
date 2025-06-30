@@ -43,6 +43,8 @@ import json
 import csv
 from qgis.PyQt.QtWidgets import QMessageBox
 import datetime
+import time
+import functools
 
 
 baseuri = "https://api.costquest.com/"
@@ -216,17 +218,6 @@ class CQAFabric:
         self.actionIdentifyData.toggled.connect(self.IdentifyData)
         self.toolbar.addAction(self.actionIdentifyData)
 
-        '''
-        # Create action for getting coordinates from mouse click in QGIS3 in a plugin
-        icon4 = QIcon(icon_path)
-        self.actionIdentifyData_1 = QAction(icon4, self.tr("Identify Fabric data 1"))
-        self.actionIdentifyData_1.setCheckable(True)
-        self.menu.addAction(self.actionIdentifyData_1)
-        toolButtonMenu.addAction(self.actionIdentifyData_1)
-        self.actionIdentifyData_1.toggled.connect(self.IdentifyData_1)
-        self.toolbar.addAction(self.actionIdentifyData_1)
-        '''
-
         self.first_start = True
 
         # Create action for address searching in QGIS3 in a plugin
@@ -243,7 +234,7 @@ class CQAFabric:
         # Add authentication window for user to input credentials
         self.auth_dialog = CQAFabricDialog()
         self.auth_dialog.setWindowTitle("CQA Fabric Authentication")
-        self.auth_dialog.setWindowFlags(Qt.WindowStaysOnTopHint)
+        self.auth_dialog.setParent(self.iface.mainWindow(), self.auth_dialog.windowFlags())
         # Set the size of the dialog
         self.auth_dialog.resize(350, 100)
         # Set the dialog to be modal
@@ -365,7 +356,7 @@ class CQAFabric:
 
     def AddFabricTiles(self):
         self.dlg = AddFabricTilesDialog()
-        self.dlg.setWindowFlags(Qt.WindowStaysOnTopHint)
+        self.dlg.setParent(self.iface.mainWindow(), self.dlg.windowFlags())
         
         # Get the vintages from the API
         layer_list = load_vintages(apikey)
@@ -388,7 +379,10 @@ class CQAFabric:
 
 
     def RetrieveData(self):
-        
+        # show processing time 
+
+
+
 
         global ids
         global collect_calls
@@ -418,7 +412,7 @@ class CQAFabric:
 
 
         # if populatetableBtn is clicked, show the table with the selected features
-        self.dlg.saveBtn.clicked.connect(lambda: self.load_geometry_result(vector_tile_layer,define_layer_name,selected_layer,selected_vintage,combined_data))
+        self.dlg.saveBtn.clicked.connect(lambda: self.load_geometry_result(vector_tile_layer,define_layer_name,selected_layer,selected_vintage,combined_data_values))
 
         self.dlg.populatetableBtn.clicked.connect(lambda: self.populate_table_result())
 
@@ -435,12 +429,13 @@ class CQAFabric:
             self.dlg.infoBox.setStyleSheet("color: red;")
             self.dlg.label_layer_3.setStyleSheet("color: red; font-weight: bold;")
 
-    def load_geometry_result(self,vector_tile_layer,define_layer_name,selected_layer,selected_vintage,combined_data):
-            self.dlg.progressBar.reset()
+    def load_geometry_result(self,vector_tile_layer,define_layer_name,selected_layer,selected_vintage,combined_data_values):
+            self.dlg.progressBar.resetFormat()
+            DateStamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
             if self.dlg.checkBox_selection.isChecked():
-                resultName = define_layer_name+f"_selection_{selected_layer}{selected_vintage}"
+                resultName = define_layer_name+f"_selection_{selected_layer}{selected_vintage}_{DateStamp}"
             else:
-                resultName = define_layer_name+f"_{selected_layer}{selected_vintage}"
+                resultName = define_layer_name+f"_{selected_layer}{selected_vintage}_{DateStamp}"
             
             self.dlg.infoBox.setText(f"Loading geometry for {resultName} layer...")
             self.dlg.infoBox.setStyleSheet("color: black;")    
@@ -458,71 +453,90 @@ class CQAFabric:
                     layer.dataProvider().addFeatures([newfeature])
             layer.commitChanges()      
 
-            DateStamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-            csvoutput_file = os.path.join(temp_dir, f"{resultName}_{DateStamp}.csv")
+            csvoutput_file = os.path.join(temp_dir, f"{resultName}.csv")
             
             with open(csvoutput_file, mode="w", newline="") as file:
                 
             # Get all keys from the first inner dictionary (assuming all dictionaries have the same structure)
-                fieldnames = list(next(iter(combined_data.values())).keys())
+                fieldnames = list(next(iter(combined_data_values)).keys())
                 writer = csv.DictWriter(file, fieldnames=fieldnames)
                 
                 # Write the header
                 writer.writeheader()
                 
                 # Write each inner dictionary as a row
-                for inner_dict in combined_data.values():
+                for inner_dict in combined_data_values:
                     writer.writerow(inner_dict)
         
             joinshp=processing.run("native:joinattributestable", {'INPUT':layer,'FIELD':'uuid','INPUT_2':csvoutput_file,'FIELD_2':'uuid','FIELDS_TO_COPY':[],'METHOD':1,'DISCARD_NONMATCHING':False,'PREFIX':'','OUTPUT':'TEMPORARY_OUTPUT'})['OUTPUT']
             joinshp.setName(resultName)
             QgsProject.instance().addMapLayer(joinshp)
-            self.dlg.infoBox.setText(f"{resultName}" + " layer with selected fields added to the map.")
+
+            # add the csv file to the map
+            csv_layer = QgsVectorLayer(csvoutput_file, os.path.basename(csvoutput_file), "ogr")
+            QgsProject.instance().addMapLayer(csv_layer)
+
+            self.dlg.infoBox.setText(f"{resultName}" + " layer and csv file with selected fields added to the map.")
             self.dlg.infoBox.setStyleSheet("color: green;")
             self.dlg.saveBtn.setEnabled(False)
             self.dlg.saveBtn.setStyleSheet("color: gray;")
             # Update the progress bar
-            self.dlg.progressBar.setValue(100)
+            self.dlg.progressBar.setFormat("Export Completed")
             
-    def load_csv_result(self,selected_layer,selected_vintage,combined_data,csv_filename):
-            self.dlg.progressBar.reset()
-            resultName = f"{csv_filename}_{selected_layer}{selected_vintage}"
+    def load_csv_result(self,selected_layer,selected_vintage,combined_data_values,csv_filepath):
+            self.dlg.progressBar.resetFormat()
+            # get csv file path without extension
+            csv_filepath_without_extension = os.path.splitext(csv_filepath)[0]       
             DateStamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-            csvoutput_file = os.path.join(temp_dir, f"{resultName}_{DateStamp}.csv")
-            
+            csvoutput_file = csv_filepath_without_extension+ f"_{selected_layer}{selected_vintage}_{DateStamp}.csv"     
+
             with open(csvoutput_file, mode="w", newline="") as file:
             # Get all keys from the first inner dictionary (assuming all dictionaries have the same structure)
-                fieldnames = list(next(iter(combined_data.values())).keys())
+                fieldnames = list(next(iter(combined_data_values)).keys())
                 writer = csv.DictWriter(file, fieldnames=fieldnames)
                 # Write the header
                 writer.writeheader()
                 # Write each inner dictionary as a row
-                for inner_dict in combined_data.values():
+                for inner_dict in combined_data_values:
                     writer.writerow(inner_dict)
             
-        
-            self.dlg.infoBox.setText(f"{csvoutput_file}" + " file with selected fields added to the map.")
+            # add the csv file to the map
+            csv_layer = QgsVectorLayer(csvoutput_file, os.path.basename(csvoutput_file), "ogr")
+            QgsProject.instance().addMapLayer(csv_layer)
+
+            self.dlg.infoBox.setText(f"{csvoutput_file}" + " file is saved and added to the map.")
+
             self.dlg.infoBox.setStyleSheet("color: green;")
             self.dlg.saveBtn.setEnabled(False)
             self.dlg.saveBtn.setStyleSheet("color: gray;")
-            # Update the progress bar
-            self.dlg.progressBar.setValue(100)
+            self.dlg.progressBar.setFormat("Save Completed")
+
 
     def populate_table_result(self): 
-        # deactive the button
+        # clean up the tableresult
+        self.dlg.tableResult.setModel(QStandardItemModel())
+
+        # reset the dialog
+        # While processing the data, lock the dialog box to prevent user interaction
+        self.dlg.setDisabled(True)
+        QApplication.processEvents()
+        start_time = time.time()  # Start timing
         self.dlg.saveBtn.setEnabled(False)
         self.dlg.progressBar.reset()
+        self.dlg.progressBar.resetFormat()
+        self.dlg.progressBar.setFormat("Loading data...")
         global vector_tile_layer      
         global define_layer_name
         global selected_layer
         global selected_vintage
-        global combined_data
+        global combined_data_values
         # Do something useful here - delete the line containing pass and
         # substitute with your code.
         # Show a message while the data is being retrieved
         selected_layer_obj = self.dlg.mapVlayersCb.currentLayer()
         # Check if layer is valid
         if not selected_layer_obj:
+            self.dlg.setDisabled(False)
             self.dlg.infoBox.setText("Please select a define layer.")
             self.dlg.infoBox.setStyleSheet("color: red;")
             # Change label_layer_3 to red and bold
@@ -530,8 +544,22 @@ class CQAFabric:
             QApplication.processEvents()
             return
         else:
+            # Get the list of fields from selectedFeaturesLw list widget
+            selected_fields = []
+            for i in range(self.dlg.selectedFeaturesLw.count()):
+                item = self.dlg.selectedFeaturesLw.item(i)
+                retrieved_data = item.data(QtCore.Qt.UserRole)
+                selected_fields.append(retrieved_data)
+            if len(selected_fields) == 0:
+                self.dlg.setDisabled(False)
+                self.dlg.infoBox.setText("Please select at least one field to retrieve data.")
+                self.dlg.infoBox.setStyleSheet("color: red;")
+                self.dlg.selectedLbl.setStyleSheet("color: red; font-weight: bold;")
+                QApplication.processEvents()
+                return
             define_layer_name = selected_layer_obj.name()
-            self.dlg.infoBox.setText("Please wait while the data is being retrieved...")
+            current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            self.dlg.infoBox.setText(f"Please wait while the data is being retrieved... ({current_time})")
             self.dlg.infoBox.setStyleSheet("color: black;")
             QApplication.processEvents()
             
@@ -545,6 +573,7 @@ class CQAFabric:
                 layer.selectAll()
                 QApplication.processEvents()
             if not selected_features:
+                self.dlg.setDisabled(False)
                 self.dlg.infoBox.setText("No features selected in "+ self.dlg.mapVlayersCb.currentText() + ". Please make selection.")
                 self.dlg.infoBox.setStyleSheet("color: red;")
                 return
@@ -562,149 +591,159 @@ class CQAFabric:
         
             
             feature_ids = [f.id() for f in Define_Layer.getFeatures()]  # Get all feature IDs
-
-
-
-
+            QApplication.processEvents()
             if selected_layer in []: #:"locations"
-                    dissolved = processing.run("native:dissolve", {'INPUT': Define_Layer,'FIELD':[],'SEPARATE_DISJOINT':False, 'OUTPUT': 'TEMPORARY_OUTPUT'})['OUTPUT']
-                    dissolved_features = list(dissolved.getFeatures())
+                dissolved = processing.run("native:dissolve", {'INPUT': Define_Layer,'FIELD':[],'SEPARATE_DISJOINT':False, 'OUTPUT': 'TEMPORARY_OUTPUT'})['OUTPUT']
+                dissolved_features = list(dissolved.getFeatures())
 
-                    # Use QgsJsonExporter to export selected features to GeoJSON    
-                    exporter = QgsJsonExporter(dissolved)
-                    exporter.setincludeattributes = False
-                    exporter.setincludegeometry = True
+                # Use QgsJsonExporter to export selected features to GeoJSON    
+                exporter = QgsJsonExporter(dissolved)
+                exporter.setincludeattributes = False
+                exporter.setincludegeometry = True
 
-                    geojson_str = exporter.exportFeatures(dissolved_features)  
+                geojson_str = exporter.exportFeatures(dissolved_features)  
 
-                    if geojson_str is None:
-                        self.iface.messageBar().pushMessage("Error", "Failed to export features to GeoJSON.", level=Qgis.Critical)
+                if geojson_str is None:
+                    self.iface.messageBar().pushMessage("Error", "Failed to export features to GeoJSON.", level=Qgis.Critical)
+                    return False
+
+                try:
+                    # Save the GeoJSON to a file
+                    output_file = os.path.join(temp_dir, "selected_features_temp.geojson")
+                    with open(output_file, "w") as f:
+                        f.write(geojson_str)
+
+                    input_file = output_file
+                    output_file = os.path.join(temp_dir, "selected_features.geojson")
+                    
+                    # Load the GeoJSON file
+                    with open(input_file, "r") as f:
+                        geojson_data = json.load(f)
+
+                    # Extract only the geometry part
+                    geometries = [feature["geometry"] for feature in geojson_data.get("features", [])]
+
+                    if not geometries:
+                        self.iface.messageBar().pushMessage("Error", "No geometries found in the GeoJSON.", level=Qgis.Critical)
                         return False
 
-                    try:
-                        # Save the GeoJSON to a file
-                        output_file = os.path.join(temp_dir, "selected_features_temp.geojson")
-                        with open(output_file, "w") as f:
-                            f.write(geojson_str)
-
-                        input_file = output_file
-                        output_file = os.path.join(temp_dir, "selected_features.geojson")
-                        
-                        # Load the GeoJSON file
-                        with open(input_file, "r") as f:
-                            geojson_data = json.load(f)
-
-                        # Extract only the geometry part
-                        geometries = [feature["geometry"] for feature in geojson_data.get("features", [])]
-
-                        if not geometries:
-                            self.iface.messageBar().pushMessage("Error", "No geometries found in the GeoJSON.", level=Qgis.Critical)
-                            return False
-
-                        # Save the geometries to a new JSON file
-                        with open(output_file, "w") as f:
-                            json.dump(geometries[0], f, indent=2)
-                        
-                        # Delete the original file
-                        #os.remove(input_file)
-
-                        self.iface.messageBar().pushMessage("Success", f"GeoJSON exported to {output_file}", level=Qgis.Success)
-                    except Exception as e:
-                        self.iface.messageBar().pushMessage("Error", f"An error occurred: {str(e)}", level=Qgis.Critical)
-                        return False
+                    # Save the geometries to a new JSON file
+                    with open(output_file, "w") as f:
+                        json.dump(geometries[0], f, indent=2)
                     
-                    # string of geojson boundary to collect on
-                    with open(output_file, "r") as file:
-                        geojson = file.read()
-                        # recursive collect method
-                        ids = collect(json.loads(geojson),selected_vintage,apikey)
-                          
-                    # there's a chance certain points are perfectly on borders of boundaries, account for rare chance of duplicates
-                    ids = list(set(ids))
-                    os.remove(os.path.join(temp_dir, "selected_features_temp.geojson"))
-                    os.remove(os.path.join(temp_dir, "selected_features.geojson"))
-                    uuidjson_file = os.path.join(temp_dir, "selected_uuids.json")
-                    # Create a new GeoJSON file with the UUIDs
-                    with open(uuidjson_file, "w") as f:
-                        json.dump(ids, f, indent=2)
-                    self.dlg.infoBox.setText("Retrieving " + str(len(ids)) + " ids data ...")
-                    self.dlg.infoBox.setStyleSheet("color: black;")
-                    QApplication.processEvents()
-            else:
-                for feature_id in feature_ids:
-                    Define_Layer.selectByIds([feature_id])
-                    box = Define_Layer.boundingBoxOfSelected()
-                    # match the box projection to the map projection
-                    if not box.isNull():
-                        # Set the extent of the map canvas to the bounding box of the selected features
-                        self.iface.mapCanvas().setDestinationCrs(Define_Layer.crs())
-                        self.iface.mapCanvas().setExtent(box)
-                        self.iface.mapCanvas().refresh()
-                    geometry = Define_Layer.getGeometry(feature_id)
-                    context = QgsSelectionContext()
-                    context.setScale(10000)
-                    xform = QgsCoordinateTransform(Define_Layer.crs(), vector_tile_layer.crs(), QgsProject.instance())
-                    geometry.transform(xform)
-                    vector_tile_layer.selectByGeometry(geometry,context)
-                    
-                    for feature in vector_tile_layer.selectedFeatures(): 
-                        uuid=feature.attributes()[0]
-                        ids.append(uuid)
-                            
-                    # Create a new GeoJSON file with the UUIDs
-                    uuidjson_file = os.path.join(temp_dir, "selected_uuids.json")
-                    # Create a new GeoJSON file with the UUIDs
-                    with open(uuidjson_file, "w") as f:
-                        json.dump(ids, f, indent=2)
-                    self.dlg.infoBox.setText("Retrieving " + str(len(ids)) + " ids data ...")
-                    self.dlg.infoBox.setStyleSheet("color: black;")
-                    QApplication.processEvents()
+                    # Delete the original file
+                    #os.remove(input_file)
+
+                    self.iface.messageBar().pushMessage("Success", f"GeoJSON exported to {output_file}", level=Qgis.Success)
+                except Exception as e:
+                    self.iface.messageBar().pushMessage("Error", f"An error occurred: {str(e)}", level=Qgis.Critical)
+                    return False
                 
-            # Get the list of fields from selectedFeaturesLw list widget
-            selected_fields = []
-            for i in range(self.dlg.selectedFeaturesLw.count()):
-                item = self.dlg.selectedFeaturesLw.item(i)
-                retrieved_data = item.data(QtCore.Qt.UserRole)
-                selected_fields.append(retrieved_data)
-            if len(selected_fields) == 0:
-                self.dlg.infoBox.setText("Please select at least one field to retrieve data.")
-                self.dlg.infoBox.setStyleSheet("color: red;")
-                self.dlg.selectedLbl.setStyleSheet("color: red; font-weight: bold;")
+                # string of geojson boundary to collect on
+                with open(output_file, "r") as file:
+                    geojson = file.read()
+                    # recursive collect method
+                    ids = collect(json.loads(geojson),selected_vintage,apikey)
+                        
+                # there's a chance certain points are perfectly on borders of boundaries, account for rare chance of duplicates
+                ids = list(set(ids))
+                os.remove(os.path.join(temp_dir, "selected_features_temp.geojson"))
+                os.remove(os.path.join(temp_dir, "selected_features.geojson"))
+                uuidjson_file = os.path.join(temp_dir, "selected_uuids.json")
+                # Create a new GeoJSON file with the UUIDs
+                with open(uuidjson_file, "w") as f:
+                    json.dump(ids, f, indent=2)
+                self.dlg.infoBox.setText("Retrieving " + str(len(ids)) + " ids data ...")
+                self.dlg.infoBox.setStyleSheet("color: black;")
                 QApplication.processEvents()
-                return
             else:
-                combined_data = bulk(uuidjson_file,selected_fields,selected_vintage,selected_layer,apikey,self.dlg.progressBar)
-                data = list(combined_data.values())
-                
-                """
-                Populate the tableResult QTableView with data.
+                current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                self.dlg.infoBox.setText(f"Selecting features from vector tile layer by geometry... ({current_time})")
+                QApplication.processEvents()
 
-                :param table_view: The QTableView instance to populate.
-                :param data: A list of dictionaries or a list of lists containing the data to display.
-                """
-                # Create a model for the table
-                model = QStandardItemModel()
-
-                # Check if data is empty
-                if not data:
+                def process_selection_task(task,Define_Layer, feature_ids, vector_tile_layer, temp_dir, progress_callback=None):
+                    ids = []
+                    for feature_id in feature_ids:
+                        Define_Layer.selectByIds([feature_id])
+                        box = Define_Layer.boundingBoxOfSelected()
+                        # match the box projection to the map projection
+                        if not box.isNull():
+                            # Set the extent of the map canvas to the bounding box of the selected features
+                            self.iface.mapCanvas().setDestinationCrs(Define_Layer.crs())
+                            self.iface.mapCanvas().setExtent(box)
+                            self.iface.mapCanvas().refresh()
+                        geometry = Define_Layer.getGeometry(feature_id)
+                        context = QgsSelectionContext()
+                        context.setScale(10000)
+                        xform = QgsCoordinateTransform(Define_Layer.crs(), vector_tile_layer.crs(), QgsProject.instance())
+                        geometry.transform(xform)
+                        vector_tile_layer.selectByGeometry(geometry,context)
+                        
+                        for feature in vector_tile_layer.selectedFeatures(): 
+                            uuid=feature.attributes()[0]
+                            ids.append(uuid)
+                                
+                        # Create a new GeoJSON file with the UUIDs
+                        uuidjson_file = os.path.join(temp_dir, "selected_uuids.json")
+                        # Create a new GeoJSON file with the UUIDs
+                        with open(uuidjson_file, "w") as f:
+                            json.dump(ids, f, indent=2)
+                    return uuidjson_file, ids
+                # Run selection in background
+                def on_finished(exception, result=None):
+                    global vector_tile_layer, define_layer_name, selected_layer, selected_vintage, combined_data_values
+                    if exception is not None:
+                        self.dlg.infoBox.setText("Error during selection: " + str(exception))
+                        self.dlg.infoBox.setStyleSheet("color: red;")
+                        self.dlg.setDisabled(False)
+                        return
+                    uuidjson_file, ids = result
+                    self.dlg.infoBox.setText(f"Retrieving {len(ids)} ids data ...")
+                    self.dlg.infoBox.setStyleSheet("color: black;")
+                    QApplication.processEvents()
+                    self.dlg.progressBar.resetFormat()
+                    combined_data = bulk(uuidjson_file, selected_fields, selected_vintage, selected_layer, apikey, self.dlg.progressBar)
+                    combined_data_values = list(combined_data.values())
+                    # ...rest of your table/model code...
+                    model = QStandardItemModel()
+                    if not combined_data_values:
+                        self.dlg.tableResult.setModel(model)
+                        self.dlg.setDisabled(False)
+                        return
+                    self.SetDataModel(model, combined_data_values, selected_vintage, selected_layer)
                     self.dlg.tableResult.setModel(model)
-                    return
+                    for column in range(model.columnCount()):
+                        self.dlg.tableResult.resizeColumnToContents(column)
+                    for row in range(model.rowCount()):
+                        self.dlg.tableResult.setRowHeight(row, 20)
+                    end_time = time.time()
+                    elapsed = (end_time - start_time) / 60
+                    self.dlg.infoBox.setText(f"{len(ids)} ids data retrieved successfully. Ready to Export. Total processing time: {elapsed:.2f} minutes.")
+                    self.dlg.infoBox.setStyleSheet("color: green;")
+                    self.dlg.saveBtn.setEnabled(True)
+                    self.dlg.saveBtn.setStyleSheet("color: green;")
+                    self.dlg.setDisabled(False)
+                    QApplication.processEvents()
+                    return vector_tile_layer,define_layer_name, selected_layer, selected_vintage, combined_data_values
 
-                self.SetDataModel(model, data,selected_vintage,selected_layer)
+                def progress_callback(value):
+                    self.dlg.progressBar.setValue(value)
+                    QApplication.processEvents()
 
-                # Set the model to the table view
-                self.dlg.tableResult.setModel(model)
-                # Set the column width to fit the content
-                for column in range(model.columnCount()):
-                    self.dlg.tableResult.resizeColumnToContents(column)
-                # Set the row height to fit the content
-                for row in range(model.rowCount()):
-                    self.dlg.tableResult.setRowHeight(row, 20)
-                self.dlg.infoBox.setText(str(len(ids)) + " ids data retrieved successfully. Ready to Export.")
-                self.dlg.infoBox.setStyleSheet("color: green;")
-                self.dlg.saveBtn.setEnabled(True)
-                self.dlg.saveBtn.setStyleSheet("color: green;")
-                return vector_tile_layer,define_layer_name, selected_layer, selected_vintage, combined_data
+                start_time = time.time()
+                task = QgsTask.fromFunction(
+                "Select Features By Geometry",
+                process_selection_task,
+                Define_Layer,
+                feature_ids,
+                vector_tile_layer,
+                temp_dir,
+                progress_callback,
+                on_finished=on_finished
+            )
+                QgsApplication.taskManager().addTask(task)
+                # check if the task is still running when the dialog is closed
+                
 
     def SetDataModel(self, model, data, selected_vintage, selected_layer):
         """
@@ -819,11 +858,15 @@ class CQAFabric:
             # get the uri of the layer
 
             self.dlg = IdentifyDataDialog()  # Assuming you have a dialog for this action
-            # show the dialog on left corner of the screen
-            self.dlg.move(self.iface.mainWindow().pos().x() + 10, self.iface.mainWindow().pos().y() + 10)
-            self.dlg.setWindowFlags(Qt.WindowStaysOnTopHint)
-            self.dlg.show()
+            # show the dialog in the center of the screen
+            self.dlg.move(
+                int(self.iface.mainWindow().pos().x() + self.iface.mainWindow().width() / 3*2 - self.dlg.width() / 3),
+                int(self.iface.mainWindow().pos().y() + self.iface.mainWindow().height() / 4 - self.dlg.height() / 4)
+            )
+            # set the window flag to show the dialog on top Within the main window
 
+            self.dlg.setParent(self.iface.mainWindow(), self.dlg.windowFlags())
+            self.dlg.show()
             # Reference to the map canvas
             canvas = self.iface.mapCanvas()
 
@@ -978,18 +1021,19 @@ class CQAFabric:
         layer_list = vintages
         self.dlg.comboBox_vintage.clear()
         self.dlg.comboBox_vintage.addItems(layer_list)
+        self.dlg.setParent(self.iface.mainWindow(), self.dlg.windowFlags())
         self.dlg.show()
 
         # if populatetableBtn is clicked, show the table with the selected features
         self.dlg.showBtn.clicked.connect(lambda: self.show_geocode_fabric())
-        self.dlg.saveBtn.clicked.connect(lambda: self.load_csv_result('locations',selected_vintage,combined_data,csv_filename))
+        self.dlg.saveBtn.clicked.connect(lambda: self.load_csv_result('locations',selected_vintage,combined_data_values,csv_filepath))
 
 
 
     def show_geocode_fabric(self):
         global selected_vintage
-        global combined_data
-        global csv_filename
+        global combined_data_values
+        global csv_filepath
 
         self.dlg.progressBar.reset()
         model = QStandardItemModel()
@@ -1022,7 +1066,7 @@ class CQAFabric:
                                 self.dlg.infoBox.setStyleSheet("color: red;")
                                 return
                     # get csv file name no extension
-                    csv_filename = os.path.splitext(os.path.basename(self.dlg.mQgsFileWidget.filePath()))[0]
+                    csv_filepath = self.dlg.mQgsFileWidget.filePath()
                 else:
                     self.dlg.infoBox.setText("CSV file is required for this operation.")
                     self.dlg.infoBox.setStyleSheet("color: red;")
@@ -1086,6 +1130,8 @@ class CQAFabric:
                                 self.dlg.infoBox.setText("CSV file should contain 'latitude', 'longitude', and'sourcekey' columns.")
                                 self.dlg.infoBox.setStyleSheet("color: red;")
                                 return
+                    # get csv file name no extension
+                    csv_filepath = self.dlg.mQgsFileWidget.filePath()
                 else:
                     self.dlg.infoBox.setText("CSV file is required for this operation.")
                     self.dlg.infoBox.setStyleSheet("color: red;")
@@ -1095,8 +1141,25 @@ class CQAFabric:
         data_1 = locatefabric(apikey, selected_vintage, coordinates_data)
         if data_1:
             self.dlg.infoBox.setText("Locate fabrics completed successfully, starting to fetch data for each fabric.")
-            locationid_key = {item.get('location_id'):item.get('sourcekey') for item in data_1 if isinstance(item, dict)}
+            from collections import defaultdict
+            locationid_key = defaultdict(list)
+            for item in data_1:
+                if isinstance(item, dict):
+                    locationid_key[item.get('location_id')].append(item.get('sourcekey'))
+
+            # Example of locationid_key after processing data_1:
+            # Suppose data_1 = [
+            #     {'location_id': 'loc1', 'sourcekey': 'A'},
+            #     {'location_id': 'loc2', 'sourcekey': 'B'},
+            #     {'location_id': 'loc1', 'sourcekey': 'C'}
+            # ]
+            # Then locationid_key will be:
+            # {
+            #     'loc1': ['A', 'C'],
+            #     'loc2': ['B']
+            # }
             if locationid_key:
+                self.dlg.infoBox.setText(str(locationid_key) )
                 if len(locationid_key)>1000:
                     self.dlg.infoBox.setText("More than 5000 locations found, fetching data for only 1000.")
                     locationid_key = list(locationid_key.items())[:1000]
@@ -1113,9 +1176,16 @@ class CQAFabric:
                 with open(uuidjson_file, "w") as f:
                     json.dump(ids, f, indent=2)
                 combined_data = bulk(uuidjson_file,fieldnames,selected_vintage,selected_layer,apikey,self.dlg.progressBar)
-                data = list(combined_data.values())
-                for item in data:
-                    item['sourcekey'] = locationid_key.get(item['location_id'])
+                combined_data_values = list(combined_data.values())
+                data_add = []
+                for item in combined_data_values:
+                    if len(locationid_key.get(item['location_id'])) > 1:
+                        for sourcekey in locationid_key.get(item['location_id'])[1:]:
+                            data_add.append({**item, "sourcekey": sourcekey})
+                    item['sourcekey'] = locationid_key.get(item['location_id'])[0]
+                combined_data_values.extend(data_add)
+                # order the items in data by sourcekey
+                combined_data_values.sort(key=lambda x: x['sourcekey'])
 
                 """
                 Populate the tableResult QTableView with data.
@@ -1127,11 +1197,11 @@ class CQAFabric:
                 model = QStandardItemModel()
 
                 # Check if data is empty
-                if not data:
+                if not combined_data_values:
                     self.dlg.tableResult.setModel(model)
                     return
 
-                self.SetDataModel(model, data,selected_vintage,selected_layer)
+                self.SetDataModel(model, combined_data_values,selected_vintage,selected_layer)
 
                 # Set the model to the table view
                 self.dlg.tableResult.setModel(model)
@@ -1141,11 +1211,11 @@ class CQAFabric:
                 # Set the row height to fit the content
                 for row in range(model.rowCount()):
                     self.dlg.tableResult.setRowHeight(row, 20)
-                self.dlg.infoBox.setText(str(len(ids)) + " ids data retrieved successfully. Ready to Export.")
+                #self.dlg.infoBox.setText(str(len(ids)) + " ids data retrieved successfully. Ready to Export.")
                 self.dlg.infoBox.setStyleSheet("color: green;")
                 self.dlg.saveBtn.setEnabled(True)
                 self.dlg.saveBtn.setStyleSheet("color: green;")
-                return selected_layer, selected_vintage, combined_data,csv_filename
+                return selected_layer, selected_vintage, combined_data_values,csv_filepath
             
 
 

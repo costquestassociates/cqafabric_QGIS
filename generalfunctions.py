@@ -74,7 +74,9 @@ def load_fabricvectortilelayer(selected_vintage,selected_layer,apikey):
 
 def bulk(uuidjson,fieldlist,selected_vintage,selected_layer,apikey,progressbar=None):
     # Create the URL for the API request
-    
+    # reset the progress bar
+    if progressbar is not None:
+        progressbar.reset()
     with open(uuidjson, 'r') as f:
         data = json.load(f)
     
@@ -120,10 +122,8 @@ def bulk(uuidjson,fieldlist,selected_vintage,selected_layer,apikey,progressbar=N
             combined_data.extend(response_data)
             # Update the progress bar if provided
             if progressbar:
-                progressbar.setValue(int(50+start / total_records * 50))
+                progressbar.setValue(progressbar.value() + int(start / total_records * (100-progressbar.value())))
                 progressbar.update()
-                
-                
         
         # join the data by uuid
         combined_data_dict = {}
