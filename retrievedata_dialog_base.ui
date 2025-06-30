@@ -532,7 +532,7 @@ color: rgb(0, 0, 255);</string>
     <string/>
    </property>
   </widget>
-  <widget class="QPushButton" name="loadGeometryBtn">
+  <widget class="QPushButton" name="saveBtn">
    <property name="enabled">
     <bool>false</bool>
    </property>
@@ -665,7 +665,7 @@ color: rgb(0, 0, 255);</string>
   <zorder>buttonBox</zorder>
   <zorder>label_layer_3</zorder>
   <zorder>infoBox</zorder>
-  <zorder>loadGeometryBtn</zorder>
+  <zorder>saveBtn</zorder>
   <zorder>summarizetableBtn</zorder>
   <zorder>populatetableBtn</zorder>
  </widget>
