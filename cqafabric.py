@@ -44,6 +44,7 @@ import csv
 from qgis.PyQt.QtWidgets import QMessageBox
 import datetime
 import time
+import functools
 
 
 baseuri = "https://api.costquest.com/"
@@ -430,10 +431,11 @@ class CQAFabric:
 
     def load_geometry_result(self,vector_tile_layer,define_layer_name,selected_layer,selected_vintage,combined_data_values):
             self.dlg.progressBar.resetFormat()
+            DateStamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
             if self.dlg.checkBox_selection.isChecked():
-                resultName = define_layer_name+f"_selection_{selected_layer}{selected_vintage}"
+                resultName = define_layer_name+f"_selection_{selected_layer}{selected_vintage}_{DateStamp}"
             else:
-                resultName = define_layer_name+f"_{selected_layer}{selected_vintage}"
+                resultName = define_layer_name+f"_{selected_layer}{selected_vintage}_{DateStamp}"
             
             self.dlg.infoBox.setText(f"Loading geometry for {resultName} layer...")
             self.dlg.infoBox.setStyleSheet("color: black;")    
@@ -451,8 +453,7 @@ class CQAFabric:
                     layer.dataProvider().addFeatures([newfeature])
             layer.commitChanges()      
 
-            DateStamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-            csvoutput_file = os.path.join(temp_dir, f"{resultName}_{DateStamp}.csv")
+            csvoutput_file = os.path.join(temp_dir, f"{resultName}.csv")
             
             with open(csvoutput_file, mode="w", newline="") as file:
                 
@@ -510,14 +511,20 @@ class CQAFabric:
             self.dlg.saveBtn.setStyleSheet("color: gray;")
             self.dlg.progressBar.setFormat("Save Completed")
 
+
     def populate_table_result(self): 
- 
+        # clean up the tableresult
+        self.dlg.tableResult.setModel(QStandardItemModel())
+
+        # reset the dialog
         # While processing the data, lock the dialog box to prevent user interaction
         self.dlg.setDisabled(True)
         QApplication.processEvents()
         start_time = time.time()  # Start timing
         self.dlg.saveBtn.setEnabled(False)
         self.dlg.progressBar.reset()
+        self.dlg.progressBar.resetFormat()
+        self.dlg.progressBar.setFormat("Loading data...")
         global vector_tile_layer      
         global define_layer_name
         global selected_layer
@@ -529,6 +536,7 @@ class CQAFabric:
         selected_layer_obj = self.dlg.mapVlayersCb.currentLayer()
         # Check if layer is valid
         if not selected_layer_obj:
+            self.dlg.setDisabled(False)
             self.dlg.infoBox.setText("Please select a define layer.")
             self.dlg.infoBox.setStyleSheet("color: red;")
             # Change label_layer_3 to red and bold
@@ -543,6 +551,7 @@ class CQAFabric:
                 retrieved_data = item.data(QtCore.Qt.UserRole)
                 selected_fields.append(retrieved_data)
             if len(selected_fields) == 0:
+                self.dlg.setDisabled(False)
                 self.dlg.infoBox.setText("Please select at least one field to retrieve data.")
                 self.dlg.infoBox.setStyleSheet("color: red;")
                 self.dlg.selectedLbl.setStyleSheet("color: red; font-weight: bold;")
@@ -564,6 +573,7 @@ class CQAFabric:
                 layer.selectAll()
                 QApplication.processEvents()
             if not selected_features:
+                self.dlg.setDisabled(False)
                 self.dlg.infoBox.setText("No features selected in "+ self.dlg.mapVlayersCb.currentText() + ". Please make selection.")
                 self.dlg.infoBox.setStyleSheet("color: red;")
                 return
@@ -581,7 +591,7 @@ class CQAFabric:
         
             
             feature_ids = [f.id() for f in Define_Layer.getFeatures()]  # Get all feature IDs
-
+            QApplication.processEvents()
             if selected_layer in []: #:"locations"
                 dissolved = processing.run("native:dissolve", {'INPUT': Define_Layer,'FIELD':[],'SEPARATE_DISJOINT':False, 'OUTPUT': 'TEMPORARY_OUTPUT'})['OUTPUT']
                 dissolved_features = list(dissolved.getFeatures())
@@ -647,83 +657,93 @@ class CQAFabric:
                 self.dlg.infoBox.setStyleSheet("color: black;")
                 QApplication.processEvents()
             else:
-                # also show current time
                 current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 self.dlg.infoBox.setText(f"Selecting features from vector tile layer by geometry... ({current_time})")
-                for feature_id in feature_ids:
-                    Define_Layer.selectByIds([feature_id])
-                    box = Define_Layer.boundingBoxOfSelected()
-                    # match the box projection to the map projection
-                    if not box.isNull():
-                        # Set the extent of the map canvas to the bounding box of the selected features
-                        self.iface.mapCanvas().setDestinationCrs(Define_Layer.crs())
-                        self.iface.mapCanvas().setExtent(box)
-                        self.iface.mapCanvas().refresh()
-                    geometry = Define_Layer.getGeometry(feature_id)
-                    context = QgsSelectionContext()
-                    context.setScale(10000)
-                    xform = QgsCoordinateTransform(Define_Layer.crs(), vector_tile_layer.crs(), QgsProject.instance())
-                    geometry.transform(xform)
-                    self.dlg.progressBar.setValue(5)
-                    vector_tile_layer.selectByGeometry(geometry,context)
-                    # update the progress bar to 70%
-                    self.dlg.progressBar.setValue(70)
-                    # update the progress bar
-                    
-                    for feature in vector_tile_layer.selectedFeatures(): 
-                        uuid=feature.attributes()[0]
-                        ids.append(uuid)
-                            
-                    # Create a new GeoJSON file with the UUIDs
-                    uuidjson_file = os.path.join(temp_dir, "selected_uuids.json")
-                    # Create a new GeoJSON file with the UUIDs
-                    with open(uuidjson_file, "w") as f:
-                        json.dump(ids, f, indent=2)
-                    current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    self.dlg.infoBox.setText(f"Retrieving " + str(len(ids)) + " ids data ... ({current_time})")
+                QApplication.processEvents()
+
+                def process_selection_task(task,Define_Layer, feature_ids, vector_tile_layer, temp_dir, progress_callback=None):
+                    ids = []
+                    for feature_id in feature_ids:
+                        Define_Layer.selectByIds([feature_id])
+                        box = Define_Layer.boundingBoxOfSelected()
+                        # match the box projection to the map projection
+                        if not box.isNull():
+                            # Set the extent of the map canvas to the bounding box of the selected features
+                            self.iface.mapCanvas().setDestinationCrs(Define_Layer.crs())
+                            self.iface.mapCanvas().setExtent(box)
+                            self.iface.mapCanvas().refresh()
+                        geometry = Define_Layer.getGeometry(feature_id)
+                        context = QgsSelectionContext()
+                        context.setScale(10000)
+                        xform = QgsCoordinateTransform(Define_Layer.crs(), vector_tile_layer.crs(), QgsProject.instance())
+                        geometry.transform(xform)
+                        vector_tile_layer.selectByGeometry(geometry,context)
+                        
+                        for feature in vector_tile_layer.selectedFeatures(): 
+                            uuid=feature.attributes()[0]
+                            ids.append(uuid)
+                                
+                        # Create a new GeoJSON file with the UUIDs
+                        uuidjson_file = os.path.join(temp_dir, "selected_uuids.json")
+                        # Create a new GeoJSON file with the UUIDs
+                        with open(uuidjson_file, "w") as f:
+                            json.dump(ids, f, indent=2)
+                    return uuidjson_file, ids
+                # Run selection in background
+                def on_finished(exception, result=None):
+                    global vector_tile_layer, define_layer_name, selected_layer, selected_vintage, combined_data_values
+                    if exception is not None:
+                        self.dlg.infoBox.setText("Error during selection: " + str(exception))
+                        self.dlg.infoBox.setStyleSheet("color: red;")
+                        self.dlg.setDisabled(False)
+                        return
+                    uuidjson_file, ids = result
+                    self.dlg.infoBox.setText(f"Retrieving {len(ids)} ids data ...")
                     self.dlg.infoBox.setStyleSheet("color: black;")
                     QApplication.processEvents()
+                    self.dlg.progressBar.resetFormat()
+                    combined_data = bulk(uuidjson_file, selected_fields, selected_vintage, selected_layer, apikey, self.dlg.progressBar)
+                    combined_data_values = list(combined_data.values())
+                    # ...rest of your table/model code...
+                    model = QStandardItemModel()
+                    if not combined_data_values:
+                        self.dlg.tableResult.setModel(model)
+                        self.dlg.setDisabled(False)
+                        return
+                    self.SetDataModel(model, combined_data_values, selected_vintage, selected_layer)
+                    self.dlg.tableResult.setModel(model)
+                    for column in range(model.columnCount()):
+                        self.dlg.tableResult.resizeColumnToContents(column)
+                    for row in range(model.rowCount()):
+                        self.dlg.tableResult.setRowHeight(row, 20)
+                    end_time = time.time()
+                    elapsed = (end_time - start_time) / 60
+                    self.dlg.infoBox.setText(f"{len(ids)} ids data retrieved successfully. Ready to Export. Total processing time: {elapsed:.2f} minutes.")
+                    self.dlg.infoBox.setStyleSheet("color: green;")
+                    self.dlg.saveBtn.setEnabled(True)
+                    self.dlg.saveBtn.setStyleSheet("color: green;")
+                    self.dlg.setDisabled(False)
+                    QApplication.processEvents()
+                    return vector_tile_layer,define_layer_name, selected_layer, selected_vintage, combined_data_values
+
+                def progress_callback(value):
+                    self.dlg.progressBar.setValue(value)
+                    QApplication.processEvents()
+
+                start_time = time.time()
+                task = QgsTask.fromFunction(
+                "Select Features By Geometry",
+                process_selection_task,
+                Define_Layer,
+                feature_ids,
+                vector_tile_layer,
+                temp_dir,
+                progress_callback,
+                on_finished=on_finished
+            )
+                QgsApplication.taskManager().addTask(task)
+                # check if the task is still running when the dialog is closed
                 
-            combined_data = bulk(uuidjson_file,selected_fields,selected_vintage,selected_layer,apikey,self.dlg.progressBar)
-            combined_data_values = list(combined_data.values())
-            
-            """
-            Populate the tableResult QTableView with data.
-
-            :param table_view: The QTableView instance to populate.
-            :param data: A list of dictionaries or a list of lists containing the data to display.
-            """
-            # Create a model for the table
-            model = QStandardItemModel()
-
-            # Check if data is empty
-            if not combined_data_values:
-                self.dlg.tableResult.setModel(model)
-                return
-
-            self.SetDataModel(model, combined_data_values,selected_vintage,selected_layer)
-
-            # Set the model to the table view
-            self.dlg.tableResult.setModel(model)
-            # Set the column width to fit the content
-            for column in range(model.columnCount()):
-                self.dlg.tableResult.resizeColumnToContents(column)
-            # Set the row height to fit the content
-            for row in range(model.rowCount()):
-                self.dlg.tableResult.setRowHeight(row, 20)
-            # At the end, after processing is complete:
-            end_time = time.time()
-            elapsed = (end_time - start_time)/ 60
-            
-            self.dlg.infoBox.setText(f"{len(ids)} ids data retrieved successfully. Ready to Export. Total processing time: {elapsed:.2f} minutes.")
-            self.dlg.infoBox.setStyleSheet("color: green;")
-            self.dlg.saveBtn.setEnabled(True)
-            self.dlg.saveBtn.setStyleSheet("color: green;")
-            self.dlg.saveBtn.setEnabled(True)
-            QApplication.processEvents()
-            # Enable the dialog to let the user save the data
-            # Return the layer and the data
-            return vector_tile_layer,define_layer_name, selected_layer, selected_vintage, combined_data_values
 
     def SetDataModel(self, model, data, selected_vintage, selected_layer):
         """
