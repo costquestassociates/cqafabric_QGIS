@@ -519,12 +519,13 @@ class CQAFabric:
         # reset the dialog
         # While processing the data, lock the dialog box to prevent user interaction
         self.dlg.setDisabled(True)
-        QApplication.processEvents()
         start_time = time.time()  # Start timing
         self.dlg.saveBtn.setEnabled(False)
+        self.dlg.saveBtn.setStyleSheet("color: gray;")
         self.dlg.progressBar.reset()
         self.dlg.progressBar.resetFormat()
         self.dlg.progressBar.setFormat("Loading data...")
+        QApplication.processEvents()
         global vector_tile_layer      
         global define_layer_name
         global selected_layer
@@ -593,69 +594,130 @@ class CQAFabric:
             feature_ids = [f.id() for f in Define_Layer.getFeatures()]  # Get all feature IDs
             QApplication.processEvents()
             if selected_layer in []: #:"locations"
-                dissolved = processing.run("native:dissolve", {'INPUT': Define_Layer,'FIELD':[],'SEPARATE_DISJOINT':False, 'OUTPUT': 'TEMPORARY_OUTPUT'})['OUTPUT']
-                dissolved_features = list(dissolved.getFeatures())
+                # Run the dissolve and collect process in a background task
+                def process_dissolve_collect_task(task, Define_Layer, selected_vintage, apikey, temp_dir, progress_callback=None):
+                    try:
+                        dissolved = processing.run("native:dissolve", {'INPUT': Define_Layer,'FIELD':[],'SEPARATE_DISJOINT':False, 'OUTPUT': 'TEMPORARY_OUTPUT'})['OUTPUT']
+                        dissolved_features = list(dissolved.getFeatures())
 
-                # Use QgsJsonExporter to export selected features to GeoJSON    
-                exporter = QgsJsonExporter(dissolved)
-                exporter.setincludeattributes = False
-                exporter.setincludegeometry = True
+                        # Use QgsJsonExporter to export selected features to GeoJSON    
+                        exporter = QgsJsonExporter(dissolved)
+                        exporter.setincludeattributes = False
+                        exporter.setincludegeometry = True
 
-                geojson_str = exporter.exportFeatures(dissolved_features)  
+                        geojson_str = exporter.exportFeatures(dissolved_features)  
 
-                if geojson_str is None:
-                    self.iface.messageBar().pushMessage("Error", "Failed to export features to GeoJSON.", level=Qgis.Critical)
-                    return False
+                        if geojson_str is None:
+                            return ("Failed to export features to GeoJSON.", None)
 
-                try:
-                    # Save the GeoJSON to a file
-                    output_file = os.path.join(temp_dir, "selected_features_temp.geojson")
-                    with open(output_file, "w") as f:
-                        f.write(geojson_str)
+                        # Save the GeoJSON to a file
+                        output_file = os.path.join(temp_dir, "selected_features_temp.geojson")
+                        with open(output_file, "w") as f:
+                            f.write(geojson_str)
 
-                    input_file = output_file
-                    output_file = os.path.join(temp_dir, "selected_features.geojson")
-                    
-                    # Load the GeoJSON file
-                    with open(input_file, "r") as f:
-                        geojson_data = json.load(f)
-
-                    # Extract only the geometry part
-                    geometries = [feature["geometry"] for feature in geojson_data.get("features", [])]
-
-                    if not geometries:
-                        self.iface.messageBar().pushMessage("Error", "No geometries found in the GeoJSON.", level=Qgis.Critical)
-                        return False
-
-                    # Save the geometries to a new JSON file
-                    with open(output_file, "w") as f:
-                        json.dump(geometries[0], f, indent=2)
-                    
-                    # Delete the original file
-                    #os.remove(input_file)
-
-                    self.iface.messageBar().pushMessage("Success", f"GeoJSON exported to {output_file}", level=Qgis.Success)
-                except Exception as e:
-                    self.iface.messageBar().pushMessage("Error", f"An error occurred: {str(e)}", level=Qgis.Critical)
-                    return False
-                
-                # string of geojson boundary to collect on
-                with open(output_file, "r") as file:
-                    geojson = file.read()
-                    # recursive collect method
-                    ids = collect(json.loads(geojson),selected_vintage,apikey)
+                        input_file = output_file
+                        output_file = os.path.join(temp_dir, "selected_features.geojson")
                         
-                # there's a chance certain points are perfectly on borders of boundaries, account for rare chance of duplicates
-                ids = list(set(ids))
-                os.remove(os.path.join(temp_dir, "selected_features_temp.geojson"))
-                os.remove(os.path.join(temp_dir, "selected_features.geojson"))
-                uuidjson_file = os.path.join(temp_dir, "selected_uuids.json")
-                # Create a new GeoJSON file with the UUIDs
-                with open(uuidjson_file, "w") as f:
-                    json.dump(ids, f, indent=2)
-                self.dlg.infoBox.setText("Retrieving " + str(len(ids)) + " ids data ...")
-                self.dlg.infoBox.setStyleSheet("color: black;")
-                QApplication.processEvents()
+                        # Load the GeoJSON file
+                        with open(input_file, "r") as f:
+                            geojson_data = json.load(f)
+
+                        # Extract only the geometry part
+                        geometries = [feature["geometry"] for feature in geojson_data.get("features", [])]
+
+                        if not geometries:
+                            return ("No geometries found in the GeoJSON.", None)
+
+                        # Save the geometries to a new JSON file
+                        with open(output_file, "w") as f:
+                            json.dump(geometries[0], f, indent=2)
+
+                        # string of geojson boundary to collect on
+                        with open(output_file, "r") as file:
+                            geojson = file.read()
+                            # recursive collect method
+                            ids = collect(json.loads(geojson),selected_vintage,apikey)
+                                
+                        # there's a chance certain points are perfectly on borders of boundaries, account for rare chance of duplicates
+                        ids = list(set(ids))
+                        # Clean up temp files
+                        try:
+                            os.remove(os.path.join(temp_dir, "selected_features_temp.geojson"))
+                        except Exception:
+                            pass
+                        try:
+                            os.remove(os.path.join(temp_dir, "selected_features.geojson"))
+                        except Exception:
+                            pass
+                        uuidjson_file = os.path.join(temp_dir, "selected_uuids.json")
+                        # Create a new GeoJSON file with the UUIDs
+                        with open(uuidjson_file, "w") as f:
+                            json.dump(ids, f, indent=2)
+                        return (None, (uuidjson_file, ids))
+                    except Exception as e:
+                        return (str(e), None)
+
+                def on_dissolve_collect_finished(exception, result=None):
+                    global vector_tile_layer, define_layer_name, selected_layer, selected_vintage, combined_data_values
+                    if exception is not None:
+                        self.dlg.infoBox.setText("Error during dissolve/collect: " + str(exception))
+                        self.dlg.infoBox.setStyleSheet("color: red;")
+                        self.dlg.setDisabled(False)
+                        return
+                    error_msg, ids_result = result
+                    if error_msg:
+                        self.iface.messageBar().pushMessage("Error", error_msg, level=Qgis.Critical)
+                        self.dlg.setDisabled(False)
+                        return
+                    uuidjson_file, ids = ids_result
+                    self.dlg.infoBox.setText("Retrieving " + str(len(ids)) + " ids data ...")
+                    self.dlg.infoBox.setStyleSheet("color: black;")
+                    QApplication.processEvents()
+                    self.dlg.progressBar.resetFormat()
+                    selected_fields = []
+                    for i in range(self.dlg.selectedFeaturesLw.count()):
+                        item = self.dlg.selectedFeaturesLw.item(i)
+                        retrieved_data = item.data(QtCore.Qt.UserRole)
+                        selected_fields.append(retrieved_data)
+                    combined_data = bulk(uuidjson_file, selected_fields, selected_vintage, selected_layer, apikey, self.dlg.progressBar)
+                    combined_data_values = list(combined_data.values())
+                    model = QStandardItemModel()
+                    if not combined_data_values:
+                        self.dlg.tableResult.setModel(model)
+                        self.dlg.setDisabled(False)
+                        return
+                    self.SetDataModel(model, combined_data_values, selected_vintage, selected_layer)
+                    self.dlg.tableResult.setModel(model)
+                    for column in range(model.columnCount()):
+                        self.dlg.tableResult.resizeColumnToContents(column)
+                    for row in range(model.rowCount()):
+                        self.dlg.tableResult.setRowHeight(row, 20)
+                    end_time = time.time()
+                    elapsed = (end_time - start_time) / 60
+                    self.dlg.infoBox.setText(f"{len(ids)} ids data retrieved successfully. Ready to Export. Total processing time: {elapsed:.2f} minutes.")
+                    self.dlg.infoBox.setStyleSheet("color: green;")
+                    self.dlg.saveBtn.setEnabled(True)
+                    self.dlg.saveBtn.setStyleSheet("color: green;")
+                    self.dlg.setDisabled(False)
+                    QApplication.processEvents()
+                    return vector_tile_layer,define_layer_name, selected_layer, selected_vintage, combined_data_values
+
+                def progress_callback(value):
+                    self.dlg.progressBar.setValue(value)
+                    QApplication.processEvents()
+
+                start_time = time.time()
+                task = QgsTask.fromFunction(
+                    "Dissolve and Collect Features",
+                    process_dissolve_collect_task,
+                    Define_Layer,
+                    selected_vintage,
+                    apikey,
+                    temp_dir,
+                    progress_callback,
+                    on_finished=on_dissolve_collect_finished
+                )
+                QgsApplication.taskManager().addTask(task)
             else:
                 current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 self.dlg.infoBox.setText(f"Selecting features from vector tile layer by geometry... ({current_time})")
@@ -1159,7 +1221,6 @@ class CQAFabric:
             #     'loc2': ['B']
             # }
             if locationid_key:
-                self.dlg.infoBox.setText(str(locationid_key) )
                 if len(locationid_key)>1000:
                     self.dlg.infoBox.setText("More than 5000 locations found, fetching data for only 1000.")
                     locationid_key = list(locationid_key.items())[:1000]
@@ -1211,7 +1272,7 @@ class CQAFabric:
                 # Set the row height to fit the content
                 for row in range(model.rowCount()):
                     self.dlg.tableResult.setRowHeight(row, 20)
-                #self.dlg.infoBox.setText(str(len(ids)) + " ids data retrieved successfully. Ready to Export.")
+                self.dlg.infoBox.setText(str(len(combined_data_values)) + " ids data retrieved successfully. Ready to Export.")
                 self.dlg.infoBox.setStyleSheet("color: green;")
                 self.dlg.saveBtn.setEnabled(True)
                 self.dlg.saveBtn.setStyleSheet("color: green;")
