@@ -94,7 +94,7 @@ def bulk(uuidjson,fieldlist,selected_vintage,selected_layer,apikey,progressbar=N
 
     # Number of fields to process at a time
     if datalevel == 100:
-        field_size = total_fields   
+        field_size = 25   
     else:
         field_size = 5  
 
