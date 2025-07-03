@@ -1202,78 +1202,95 @@ class CQAFabric:
         
         data_1 = locatefabric(apikey, selected_vintage, coordinates_data)
         if data_1:
-            self.dlg.infoBox.setText("Locate fabrics completed successfully, starting to fetch data for each fabric.")
-            from collections import defaultdict
-            locationid_key = defaultdict(list)
-            for item in data_1:
-                if isinstance(item, dict):
-                    locationid_key[item.get('location_id')].append(item.get('sourcekey'))
+            if self.dlg.checkBox_attribute.isChecked():
+                self.dlg.infoBox.setText("Locate fabrics completed successfully, starting to fetch data for each fabric.")
+                from collections import defaultdict
+                locationid_key = defaultdict(list)
+                for item in data_1:
+                    if isinstance(item, dict):
+                        locationid_key[item.get('location_id')].append(item.get('sourcekey'))
 
-            # Example of locationid_key after processing data_1:
-            # Suppose data_1 = [
-            #     {'location_id': 'loc1', 'sourcekey': 'A'},
-            #     {'location_id': 'loc2', 'sourcekey': 'B'},
-            #     {'location_id': 'loc1', 'sourcekey': 'C'}
-            # ]
-            # Then locationid_key will be:
-            # {
-            #     'loc1': ['A', 'C'],
-            #     'loc2': ['B']
-            # }
-            if locationid_key:
-                if len(locationid_key)>1000:
-                    self.dlg.infoBox.setText("More than 5000 locations found, fetching data for only 1000.")
-                    locationid_key = list(locationid_key.items())[:1000]
-            
-                data_2 = translatefabric(apikey, selected_vintage, list(locationid_key.keys()), None, None)
+                # Example of locationid_key after processing data_1:
+                # Suppose data_1 = [
+                #     {'location_id': 'loc1', 'sourcekey': 'A'},
+                #     {'location_id': 'loc2', 'sourcekey': 'B'},
+                #     {'location_id': 'loc1', 'sourcekey': 'C'}
+                # ]
+                # Then locationid_key will be:
+                # {
+                #     'loc1': ['A', 'C'],
+                #     'loc2': ['B']
+                # }
+                if locationid_key:
+                    if len(locationid_key)>1000:
+                        self.dlg.infoBox.setText("More than 5000 locations found, fetching data for only 1000.")
+                        locationid_key = list(locationid_key.items())[:1000]
+                
+                    data_2 = translatefabric(apikey, selected_vintage, list(locationid_key.keys()), None, None)
+                        
+                    ids = [item.get('uuid') for item in data_2 if isinstance(item, dict)]
+                    fieldnames = getfieldsinfo(selected_vintage, selected_layer, apikey)
+                    displayname_dict = getfieldsdisplayname(selected_vintage,selected_layer,apikey)
+                    ordered_keys = list(displayname_dict.keys())
+                    ordered_keys.reverse()
+                    uuidjson_file = os.path.join(temp_dir, "selected_uuids.json")
+                    # Create a new GeoJSON file with the UUIDs
+                    with open(uuidjson_file, "w") as f:
+                        json.dump(ids, f, indent=2)
+                    combined_data = bulk(uuidjson_file,fieldnames,selected_vintage,selected_layer,apikey,self.dlg.progressBar)
+                    combined_data_values = list(combined_data.values())
+                    data_add = []
+                    for item in combined_data_values:
+                        if len(locationid_key.get(item['location_id'])) > 1:
+                            for sourcekey in locationid_key.get(item['location_id'])[1:]:
+                                data_add.append({**item, "sourcekey": sourcekey})
+                        item['sourcekey'] = locationid_key.get(item['location_id'])[0]
+                    combined_data_values.extend(data_add)
+
+                    for item in combined_data_values:
+                        for item1 in data_1:
+                            if item1['location_id'] == item['location_id']:
+                                if item1['sourcekey'] == item['sourcekey']: 
+                                    for key, value in item1.items():
+                                        if key not in item.keys():
+                                            item[key] = value
+
                     
-                ids = [item.get('uuid') for item in data_2 if isinstance(item, dict)]
-                fieldnames = getfieldsinfo(selected_vintage, selected_layer, apikey)
-                displayname_dict = getfieldsdisplayname(selected_vintage,selected_layer,apikey)
-                ordered_keys = list(displayname_dict.keys())
-                ordered_keys.reverse()
-                uuidjson_file = os.path.join(temp_dir, "selected_uuids.json")
-                # Create a new GeoJSON file with the UUIDs
-                with open(uuidjson_file, "w") as f:
-                    json.dump(ids, f, indent=2)
-                combined_data = bulk(uuidjson_file,fieldnames,selected_vintage,selected_layer,apikey,self.dlg.progressBar)
-                combined_data_values = list(combined_data.values())
-                data_add = []
-                for item in combined_data_values:
-                    if len(locationid_key.get(item['location_id'])) > 1:
-                        for sourcekey in locationid_key.get(item['location_id'])[1:]:
-                            data_add.append({**item, "sourcekey": sourcekey})
-                    item['sourcekey'] = locationid_key.get(item['location_id'])[0]
-                combined_data_values.extend(data_add)
-                # order the items in data by sourcekey
-                combined_data_values.sort(key=lambda x: x['sourcekey'])
+                    # order the items in data by sourcekey
+                    combined_data_values.sort(key=lambda x: x['sourcekey'])
+            
+            else:
+                # Remove the item in data_1 that has no location_id
+                data_1 = [item for item in data_1 if item.get('location_id')]
+                combined_data_values = data_1
 
-                """
-                Populate the tableResult QTableView with data.
+            """
+            Populate the tableResult QTableView with data.
 
-                :param table_view: The QTableView instance to populate.
-                :param data: A list of dictionaries or a list of lists containing the data to display.
-                """
-                # Create a model for the table
-                model = QStandardItemModel()
+            :param table_view: The QTableView instance to populate.
+            :param data: A list of dictionaries or a list of lists containing the data to display.
+            """
+            # Create a model for the table
+            model = QStandardItemModel()
 
-                # Check if data is empty
-                if not combined_data_values:
-                    self.dlg.tableResult.setModel(model)
-                    return
-
-                self.SetDataModel(model, combined_data_values,selected_vintage,selected_layer)
-
-                # Set the model to the table view
+            # Check if data is empty
+            if not combined_data_values:
                 self.dlg.tableResult.setModel(model)
-                # Set the column width to fit the content
-                for column in range(model.columnCount()):
-                    self.dlg.tableResult.resizeColumnToContents(column)
-                # Set the row height to fit the content
-                for row in range(model.rowCount()):
-                    self.dlg.tableResult.setRowHeight(row, 20)
-                self.dlg.infoBox.setText(str(len(combined_data_values)) + " ids data retrieved successfully. Ready to Export.")
-                self.dlg.infoBox.setStyleSheet("color: green;")
+                return
+
+            self.SetDataModel(model, combined_data_values,selected_vintage,selected_layer)
+
+            # Set the model to the table view
+            self.dlg.tableResult.setModel(model)
+            # Set the column width to fit the content
+            for column in range(model.columnCount()):
+                self.dlg.tableResult.resizeColumnToContents(column)
+            # Set the row height to fit the content
+            for row in range(model.rowCount()):
+                self.dlg.tableResult.setRowHeight(row, 20)
+            self.dlg.infoBox.setText(str(len(combined_data_values)) + " ids data retrieved successfully. Ready to Export.")
+            self.dlg.infoBox.setStyleSheet("color: green;")
+            if csv_filepath:
                 self.dlg.saveBtn.setEnabled(True)
                 self.dlg.saveBtn.setStyleSheet("color: green;")
                 return selected_layer, selected_vintage, combined_data_values,csv_filepath
