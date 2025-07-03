@@ -349,6 +349,7 @@ class CQAFabric:
 
     def AddFabricTiles(self):
         self.disable_all_actions()
+        self.actionValidateAPIKey.setEnabled(False)
         
         self.dlg = AddFabricTilesDialog()
         self.dlg.setParent(self.iface.mainWindow(), self.dlg.windowFlags())
@@ -378,6 +379,7 @@ class CQAFabric:
 
     def RetrieveData(self):
         self.disable_all_actions()
+        self.actionValidateAPIKey.setEnabled(False)
  
 
         global ids
@@ -406,7 +408,7 @@ class CQAFabric:
 
         # Check if a layer is selected
         self.dlg.pushButton_ChgSelect.clicked.connect(lambda: self.change_selection())
-
+        # initialize the task manager
         task_manager = QgsApplication.taskManager()
         for task in task_manager.tasks():
             task.cancel()
@@ -443,7 +445,6 @@ class CQAFabric:
                     self.dlg.show()
                     return
             else:
-                self.iface.messageBar().pushMessage("Info", "Dialog closed.", level=Qgis.Info)
                 self.enable_all_actions()
         self.dlg.finished.connect(handle_dialog_finished)
 
@@ -943,6 +944,7 @@ class CQAFabric:
 
     def IdentifyData(self):  
         self.disable_all_actions()
+        self.actionValidateAPIKey.setEnabled(False)
 
         self.dlg = IdentifyDataDialog()  # Assuming you have a dialog for this action
         # show the dialog in the center of the screen
@@ -1100,6 +1102,7 @@ class CQAFabric:
 
     def LocateFabric(self):
         self.disable_all_actions()
+        self.actionValidateAPIKey.setEnabled(False)
         self.dlg1 = LocateFabricDialog()
         self.dlg = self.dlg1
         self.dlg.setFixedSize(self.dlg.size())
@@ -1349,4 +1352,4 @@ class CQAFabric:
         self.actionRetrieveData.setEnabled(False)
         self.actionIdentifyData.setEnabled(False)
         self.actionLocateFabric.setEnabled(False)
-        self.actionValidateAPIKey.setEnabled(False)
+        
