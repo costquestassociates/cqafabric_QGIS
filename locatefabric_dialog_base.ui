@@ -209,6 +209,29 @@ color: rgb(0, 0, 255);</string>
      </size>
     </property>
    </widget>
+   <widget class="QCheckBox" name="checkBox_attribute">
+    <property name="geometry">
+     <rect>
+      <x>410</x>
+      <y>40</y>
+      <width>121</width>
+      <height>20</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>8</pointsize>
+      <weight>75</weight>
+      <italic>false</italic>
+      <bold>true</bold>
+      <underline>false</underline>
+      <strikeout>false</strikeout>
+     </font>
+    </property>
+    <property name="text">
+     <string>Show Attribute?</string>
+    </property>
+   </widget>
   </widget>
   <widget class="QGroupBox" name="groupBox">
    <property name="geometry">
@@ -239,7 +262,7 @@ color: rgb(0, 0, 255);</string>
     <property name="geometry">
      <rect>
       <x>10</x>
-      <y>50</y>
+      <y>20</y>
       <width>76</width>
       <height>17</height>
      </rect>
@@ -258,7 +281,7 @@ color: rgb(0, 0, 255);</string>
      <string>Coordinate</string>
     </property>
     <property name="checked">
-     <bool>false</bool>
+     <bool>true</bool>
     </property>
     <property name="autoExclusive">
      <bool>true</bool>
@@ -271,7 +294,7 @@ color: rgb(0, 0, 255);</string>
     <property name="geometry">
      <rect>
       <x>10</x>
-      <y>27</y>
+      <y>40</y>
       <width>76</width>
       <height>17</height>
      </rect>
@@ -290,7 +313,7 @@ color: rgb(0, 0, 255);</string>
      <string>Address</string>
     </property>
     <property name="checked">
-     <bool>true</bool>
+     <bool>false</bool>
     </property>
     <property name="autoExclusive">
      <bool>false</bool>
@@ -391,7 +414,7 @@ color: rgb(0, 0, 255);</string>
      </font>
     </property>
     <property name="text">
-     <string>Please enter the single line address in the input box.(e.g., 123 Main St, City, State, Zip Code)</string>
+     <string>Please enter latitude and longitude in the input box, separated by a comma (e.g., 36.660,-80.924).</string>
     </property>
    </widget>
    <widget class="QgsFileWidget" name="mQgsFileWidget">
