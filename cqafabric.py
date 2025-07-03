@@ -197,8 +197,6 @@ class CQAFabric:
         self.actionAddFabricTiles.triggered.connect(self.AddFabricTiles)
         self.toolbar.addAction(self.actionAddFabricTiles)
         
-
-
         # Create action for opening the Retrieve data fields window
         icon_path_1 = ':/plugins/cqafabric/icons/icon1.png'
         icon2 = QIcon(icon_path_1)
@@ -212,10 +210,9 @@ class CQAFabric:
         icon_path_2 = ':/plugins/cqafabric/icons/icon2.png'
         icon3 = QIcon(icon_path_2)
         self.actionIdentifyData = QAction(icon3, self.tr("Identify Fabric"))
-        self.actionIdentifyData.setCheckable(True)
         self.menu.addAction(self.actionIdentifyData)
         toolButtonMenu.addAction(self.actionIdentifyData)
-        self.actionIdentifyData.toggled.connect(self.IdentifyData)
+        self.actionIdentifyData.triggered.connect(self.IdentifyData)
         self.toolbar.addAction(self.actionIdentifyData)
 
         self.first_start = True
@@ -290,16 +287,13 @@ class CQAFabric:
                 global apikey
                 apikey = f.read().strip()
             # enable the retrieve data button
-            self.actionRetrieveData.setEnabled(True)
-            self.actionIdentifyData.setEnabled(True)
-            self.actionLocateFabric.setEnabled(True)
+            self.enable_all_actions()
             self.actionValidateAPIKey.setText(self.tr("Log Out"))
             
         else:
         # Show the authentication dialog
-            self.actionRetrieveData.setEnabled(False)
-            self.actionIdentifyData.setEnabled(False)
-            self.actionLocateFabric.setEnabled(False)
+            self.disable_all_actions()
+        
         
 
             
@@ -315,9 +309,7 @@ class CQAFabric:
                 self.auth_dialog.close()
                 self.iface.messageBar().pushMessage("Success", "API key saved successfully.", level=Qgis.Success)
                 # change the button text to "Log Out"
-                self.actionRetrieveData.setEnabled(True)
-                self.actionIdentifyData.setEnabled(True)
-                self.actionLocateFabric.setEnabled(True)
+                self.enable_all_actions()
                 self.actionValidateAPIKey.setText(self.tr("Log Out"))
                 
             else:
@@ -333,10 +325,11 @@ class CQAFabric:
             self.iface.messageBar().pushMessage("Info", "API key file not found.", level=Qgis.Info)
         
         # Close the authentication dialog
-        self.actionRetrieveData.setEnabled(False)
-        self.actionIdentifyData.setEnabled(False)
-        self.actionLocateFabric.setEnabled(False)
+        self.disable_all_actions()
         self.actionValidateAPIKey.setText(self.tr("Log In"))
+        # if there is self.dlg, close it
+        if hasattr(self, 'dlg') and self.dlg is not None:
+            self.dlg.close()
         self.auth_dialog.show()
         
                 
@@ -355,6 +348,8 @@ class CQAFabric:
     
 
     def AddFabricTiles(self):
+        self.disable_all_actions()
+        
         self.dlg = AddFabricTilesDialog()
         self.dlg.setParent(self.iface.mainWindow(), self.dlg.windowFlags())
         
@@ -377,20 +372,22 @@ class CQAFabric:
         self.dlg.pushButton_AddTiles_S.clicked.connect(lambda: self.add_fabrictilessource())
 
 
+        # when dlg is closed, uncheck the action
+        self.dlg.finished.connect(self.enable_all_actions)
+
 
     def RetrieveData(self):
-        # show processing time 
-
-
-
+        self.disable_all_actions()
+ 
 
         global ids
         global collect_calls
         global divide_calls
 
-
         # Create the dialog with elements (after translation) and keep reference
         # Only create GUI ONCE in callback, so that it will only load when the plugin is started
+        # if dlg is closed, uncheck the action
+        
         self.dlg = RetrieveDataDialog()
         self.dlg.setWindowFlags(Qt.WindowMinimizeButtonHint | Qt.WindowCloseButtonHint)
         self.dlg.setFixedSize(self.dlg.size())
@@ -410,7 +407,9 @@ class CQAFabric:
         # Check if a layer is selected
         self.dlg.pushButton_ChgSelect.clicked.connect(lambda: self.change_selection())
 
-
+        task_manager = QgsApplication.taskManager()
+        for task in task_manager.tasks():
+            task.cancel()
         # if populatetableBtn is clicked, show the table with the selected features
         self.dlg.saveBtn.clicked.connect(lambda: self.load_geometry_result(vector_tile_layer,define_layer_name,selected_layer,selected_vintage,combined_data_values))
 
@@ -418,6 +417,35 @@ class CQAFabric:
 
         self.dlg.summarizetableBtn.clicked.connect(lambda: self.summarize_table_result())
                 
+        def handle_dialog_finished(result):
+            task_manager = QgsApplication.taskManager()
+            # Check if there are any running tasks name starting with 'Retrieve Data' before closing the dialog
+            running_tasks = [
+                                task for task in task_manager.tasks()
+                                if task.status() == QgsTask.Running and
+                                task.description().startswith('Retrieve Data') and
+                                not task.isCanceled()
+                            ]
+            if running_tasks:
+                reply = QMessageBox.question(
+                    self.dlg,
+                    "Cancel Task?",
+                    "There is a background task running. Do you want to cancel it before closing?",
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.No
+                )
+                if reply == QMessageBox.Yes:
+                    for task in running_tasks:
+                        task.cancel()
+                    self.enable_all_actions()
+                else:
+                    # Reopen the dialog if user cancels closing
+                    self.dlg.show()
+                    return
+            else:
+                self.iface.messageBar().pushMessage("Info", "Dialog closed.", level=Qgis.Info)
+                self.enable_all_actions()
+        self.dlg.finished.connect(handle_dialog_finished)
 
     def change_selection(self):
         if len(self.dlg.mapVlayersCb.currentText())>0:
@@ -438,7 +466,7 @@ class CQAFabric:
                 resultName = define_layer_name+f"_{selected_layer}{selected_vintage}_{DateStamp}"
             
             self.dlg.infoBox.setText(f"Loading geometry for {resultName} layer...")
-            self.dlg.infoBox.setStyleSheet("color: black;")    
+            self.dlg.infoBox.setStyleSheet("")    
             if selected_layer == "locations":
                 layer = QgsVectorLayer("Point?crs="+vector_tile_layer.crs().authid()+"&field=uuid:string(255)", f"{resultName}", "memory")
             else:
@@ -561,7 +589,7 @@ class CQAFabric:
             define_layer_name = selected_layer_obj.name()
             current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             self.dlg.infoBox.setText(f"Please wait while the data is being retrieved... ({current_time})")
-            self.dlg.infoBox.setStyleSheet("color: black;")
+            self.dlg.infoBox.setStyleSheet("")
             QApplication.processEvents()
             
             self.iface.setActiveLayer(selected_layer_obj)
@@ -671,7 +699,7 @@ class CQAFabric:
                         return
                     uuidjson_file, ids = ids_result
                     self.dlg.infoBox.setText("Retrieving " + str(len(ids)) + " ids data ...")
-                    self.dlg.infoBox.setStyleSheet("color: black;")
+                    self.dlg.infoBox.setStyleSheet("")
                     QApplication.processEvents()
                     self.dlg.progressBar.resetFormat()
                     selected_fields = []
@@ -708,7 +736,7 @@ class CQAFabric:
 
                 start_time = time.time()
                 task = QgsTask.fromFunction(
-                    "Dissolve and Collect Features",
+                    "Retrieve Data - Dissolve Collect",
                     process_dissolve_collect_task,
                     Define_Layer,
                     selected_vintage,
@@ -761,7 +789,7 @@ class CQAFabric:
                         return
                     uuidjson_file, ids = result
                     self.dlg.infoBox.setText(f"Retrieving {len(ids)} ids data ...")
-                    self.dlg.infoBox.setStyleSheet("color: black;")
+                    self.dlg.infoBox.setStyleSheet("")
                     QApplication.processEvents()
                     self.dlg.progressBar.resetFormat()
                     combined_data = bulk(uuidjson_file, selected_fields, selected_vintage, selected_layer, apikey, self.dlg.progressBar)
@@ -794,7 +822,7 @@ class CQAFabric:
 
                 start_time = time.time()
                 task = QgsTask.fromFunction(
-                "Select Features By Geometry",
+                "Retrieve Data - Select Features",
                 process_selection_task,
                 Define_Layer,
                 feature_ids,
@@ -851,7 +879,7 @@ class CQAFabric:
 
     def add_fabrictileslayer(self):
         self.dlg.infoBox.setText("Please wait while the vector tile layer is added to the map...")
-        self.dlg.infoBox.setStyleSheet("color: black;")
+        self.dlg.infoBox.setStyleSheet("")
         QApplication.processEvents()
         selected_vintage = self.dlg.comboBox_vintage.currentText()  # Get the selected vintage from the combo box vintage
         selected_layer = self.dlg.comboBox_layer.currentText()  # Get the selected layer from the combo box layer
@@ -880,7 +908,7 @@ class CQAFabric:
 
     def add_fabrictilessource(self):
         self.dlg.infoBox.setText("Please wait while the vector tile source is added to the browser...")
-        self.dlg.infoBox.setStyleSheet("color: black;")
+        self.dlg.infoBox.setStyleSheet("")
         QApplication.processEvents()
         selected_vintage = self.dlg.comboBox_vintage.currentText()  # Get the selected vintage from the combo box vintage
         selected_layer = self.dlg.comboBox_layer.currentText()  # Get the selected layer from the combo box layer
@@ -914,43 +942,39 @@ class CQAFabric:
         
 
     def IdentifyData(self):  
-        # get the current active layer every time when the active layer is changed
-        
-        if self.actionIdentifyData.isChecked():
-            # get the uri of the layer
+        self.disable_all_actions()
 
-            self.dlg = IdentifyDataDialog()  # Assuming you have a dialog for this action
-            # show the dialog in the center of the screen
-            self.dlg.move(
-                int(self.iface.mainWindow().pos().x() + self.iface.mainWindow().width() / 3*2 - self.dlg.width() / 3),
-                int(self.iface.mainWindow().pos().y() + self.iface.mainWindow().height() / 4 - self.dlg.height() / 4)
-            )
-            # set the window flag to show the dialog on top Within the main window
+        self.dlg = IdentifyDataDialog()  # Assuming you have a dialog for this action
+        # show the dialog in the center of the screen
+        self.dlg.move(
+            int(self.iface.mainWindow().pos().x() + self.iface.mainWindow().width() / 3*2 - self.dlg.width() / 3),
+            int(self.iface.mainWindow().pos().y() + self.iface.mainWindow().height() / 4 - self.dlg.height() / 4)
+        )
+        # set the window flag to show the dialog on top Within the main window
 
-            self.dlg.setParent(self.iface.mainWindow(), self.dlg.windowFlags())
-            self.dlg.show()
-            # Reference to the map canvas
-            canvas = self.iface.mapCanvas()
+        self.dlg.setParent(self.iface.mainWindow(), self.dlg.windowFlags())
+        self.dlg.show()
+        # Reference to the map canvas
+        canvas = self.iface.mapCanvas()
 
-            # Create a map tool to emit points on mouse click
-            self.pointTool = QgsMapToolEmitPoint(canvas)
-                
-            # Connect the signal to a custom slot to handle the clicked point
-            self.pointTool.canvasClicked.connect(lambda point, button: self.display_point(point))
-            # Set the cursor for the map tool
-            # Set the map tool to the canvas
-            canvas.setMapTool(self.pointTool)
-            # Connect this function to the QGIS signal
-            QgsProject.instance().layerWillBeRemoved.connect(self.on_active_layer_changed)
-            self.iface.layerTreeView().currentLayerChanged.connect(lambda layer: self.on_active_layer_changed())
+        # Create a map tool to emit points on mouse click
+        self.pointTool = QgsMapToolEmitPoint(canvas)
+            
+        # Connect the signal to a custom slot to handle the clicked point
+        self.pointTool.canvasClicked.connect(lambda point, button: self.display_point(point))
+        # Set the cursor for the map tool
+        # Set the map tool to the canvas
+        canvas.setMapTool(self.pointTool)
+        # Connect this function to the QGIS signal
+        QgsProject.instance().layerWillBeRemoved.connect(self.on_active_layer_changed)
+        self.iface.layerTreeView().currentLayerChanged.connect(lambda layer: self.on_active_layer_changed())
 
-        
-        else:
+
+        self.dlg.finished.connect(lambda: (
+            self.enable_all_actions(),
             self.iface.mapCanvas().setMapTool(QgsMapToolEmitPoint(self.iface.mapCanvas()))
-            self.dlg.close()
+        ))
 
-        # when dlg is closed, uncheck the action
-        self.dlg.finished.connect(lambda: self.actionIdentifyData.setChecked(False))
 
 
     class ScrollMessageBox(QMessageBox):
@@ -1075,7 +1099,9 @@ class CQAFabric:
 
 
     def LocateFabric(self):
-        self.dlg = LocateFabricDialog()
+        self.disable_all_actions()
+        self.dlg1 = LocateFabricDialog()
+        self.dlg = self.dlg1
         self.dlg.setFixedSize(self.dlg.size())
 
         # Get the vintages from the API
@@ -1089,13 +1115,15 @@ class CQAFabric:
         # if populatetableBtn is clicked, show the table with the selected features
         self.dlg.showBtn.clicked.connect(lambda: self.show_geocode_fabric())
         self.dlg.saveBtn.clicked.connect(lambda: self.load_csv_result('locations',selected_vintage,combined_data_values,csv_filepath))
-
-
+        # when dlg is closed, uncheck the action
+        self.dlg.finished.connect(self.enable_all_actions)
 
     def show_geocode_fabric(self):
         global selected_vintage
         global combined_data_values
         global csv_filepath
+
+        csv_filepath = None  # Ensure csv_filepath is always defined
 
         self.dlg.progressBar.reset()
         model = QStandardItemModel()
@@ -1107,13 +1135,13 @@ class CQAFabric:
             coordinates_data = []
             if not self.dlg.checkBox_CSV.isChecked():
                 self.dlg.infoBox.setText("Searching for single address")
-                self.dlg.infoBox.setStyleSheet("color: black;")
+                self.dlg.infoBox.setStyleSheet("")
                 addresstexts = [{1:self.dlg.infoBox_input.text()}]
             else:
                 if self.dlg.mQgsFileWidget.filePath():
                     # Read the CSV file and get the texts from address column and sourcekey column. put them in a list [{sourcekey: address}]
                     self.dlg.infoBox.setText("Searching for addresses from CSV file")
-                    self.dlg.infoBox.setStyleSheet("color: black;")
+                    self.dlg.infoBox.setStyleSheet("")
                     addresstexts = []
                     with open(self.dlg.mQgsFileWidget.filePath(), newline='', encoding='utf-8') as csvfile:
                         reader = csv.DictReader(csvfile)
@@ -1154,7 +1182,7 @@ class CQAFabric:
             coordinates_data = []
             if not self.dlg.checkBox_CSV.isChecked():
                 self.dlg.infoBox.setText("Searching for single Coordinates")
-                self.dlg.infoBox.setStyleSheet("color: black;")
+                self.dlg.infoBox.setStyleSheet("")
                 coordinates = self.dlg.infoBox_input.text().split(",")
                 # convert coordinates to float
                 coordinates_1 = [float(coord.strip()) for coord in coordinates]
@@ -1174,7 +1202,7 @@ class CQAFabric:
                 if self.dlg.mQgsFileWidget.filePath():
                     # Read the CSV file and get the texts from address column and sourcekey column. put them in a list [{sourcekey: address}]
                     self.dlg.infoBox.setText("Searching for coordinates from CSV file")
-                    self.dlg.infoBox.setStyleSheet("color: black;")
+                    self.dlg.infoBox.setStyleSheet("")
 
                     with open(self.dlg.mQgsFileWidget.filePath(), newline='', encoding='utf-8') as csvfile:
                         reader = csv.DictReader(csvfile)
@@ -1308,6 +1336,17 @@ class CQAFabric:
                 self.dlg.mapVlayersCb.setCurrentIndex(index)
         else:
             self.dlg.mapVlayersCb.setCurrentIndex(-1)
-
-
-      
+    
+    def enable_all_actions(self):
+        self.actionAddFabricTiles.setEnabled(True)
+        self.actionRetrieveData.setEnabled(True)
+        self.actionIdentifyData.setEnabled(True)
+        self.actionLocateFabric.setEnabled(True)
+        self.actionValidateAPIKey.setEnabled(True)
+    
+    def disable_all_actions(self):
+        self.actionAddFabricTiles.setEnabled(False)
+        self.actionRetrieveData.setEnabled(False)
+        self.actionIdentifyData.setEnabled(False)
+        self.actionLocateFabric.setEnabled(False)
+        self.actionValidateAPIKey.setEnabled(False)

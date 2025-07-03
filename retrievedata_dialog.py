@@ -33,6 +33,8 @@ from qgis.utils import iface
 import urllib.request
 import json
 from .generalfunctions import *
+from PyQt5.QtWidgets import QMessageBox
+from qgis.core import QgsApplication, QgsTask
 # This loads your .ui file so that PyQt can populate your plugin with the elements from Qt Designer
 FORM_CLASS, _ = uic.loadUiType(os.path.join(
     os.path.dirname(__file__), 'retrievedata_dialog_base.ui'))
@@ -263,3 +265,11 @@ class RetrieveDataDialog(QtWidgets.QDialog, FORM_CLASS):
             item = self.selectedFeaturesLw.item(row)
             ids.append(item.data(Qt.UserRole))
         return ids
+
+    
+       
+
+
+
+
+        
