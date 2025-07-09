@@ -967,15 +967,14 @@ class CQAFabric:
         # Set the cursor for the map tool
         # Set the map tool to the canvas
         canvas.setMapTool(self.pointTool)
-        # Connect this function to the QGIS signal
-        QgsProject.instance().layerWillBeRemoved.connect(self.on_active_layer_changed)
-        self.iface.layerTreeView().currentLayerChanged.connect(lambda layer: self.on_active_layer_changed())
 
 
         self.dlg.finished.connect(lambda: (
             self.enable_all_actions(),
             self.iface.mapCanvas().setMapTool(QgsMapToolEmitPoint(self.iface.mapCanvas()))
         ))
+
+        
 
 
 
@@ -1330,15 +1329,6 @@ class CQAFabric:
 
                
 
-    def on_active_layer_changed(self):
-        layer = self.iface.activeLayer()
-        # check if layer is vectortile layer
-        if layer and layer.type() == QgsMapLayer.VectorTileLayer:
-            index = self.dlg.mapVlayersCb.findText(layer.name())
-            if index != -1:
-                self.dlg.mapVlayersCb.setCurrentIndex(index)
-        else:
-            self.dlg.mapVlayersCb.setCurrentIndex(-1)
     
     def enable_all_actions(self):
         self.actionAddFabricTiles.setEnabled(True)
