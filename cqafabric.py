@@ -74,7 +74,7 @@ class CQAFabric:
             self.translator = QTranslator()
             self.translator.load(locale_path)
             QCoreApplication.installTranslator(self.translator)
-
+        
         # Check if plugin was started the first time in current QGIS session
         # Must be set in initGui() to survive plugin reloads
         # self.first_start = None
@@ -260,8 +260,8 @@ class CQAFabric:
         global apikey_file
         global temp_dir
         global qgis_dir
-        qgis_dir = os.path.join(r"C:\Users",user_name, 'AppData\Roaming\QGIS')
-        temp_dir =  os.path.join(r"C:\Users",user_name, 'AppData\Roaming\QGIS\Temp')
+        qgis_dir = os.path.join(r"C:\Users",user_name, r'AppData\Roaming\QGIS')
+        temp_dir =  os.path.join(r"C:\Users",user_name, r'AppData\Roaming\QGIS\Temp')
         if not os.path.exists(temp_dir):
             os.makedirs(temp_dir)
         apikey_file = os.path.join(qgis_dir, 'QGIS_CQAFabric.config')
@@ -409,8 +409,8 @@ class CQAFabric:
         # Check if a layer is selected
         self.dlg.pushButton_ChgSelect.clicked.connect(lambda: self.change_selection())
         # initialize the task manager
-        task_manager = QgsApplication.taskManager()
-        for task in task_manager.tasks():
+        self.task_manager = QgsApplication.taskManager()
+        for task in self.task_manager.tasks():
             task.cancel()
         # if populatetableBtn is clicked, show the table with the selected features
         self.dlg.saveBtn.clicked.connect(lambda: self.load_geometry_result(vector_tile_layer,define_layer_name,selected_layer,selected_vintage,combined_data_values))
@@ -420,10 +420,10 @@ class CQAFabric:
         self.dlg.summarizetableBtn.clicked.connect(lambda: self.summarize_table_result())
                 
         def handle_dialog_finished(result):
-            task_manager = QgsApplication.taskManager()
+            self.task_manager = QgsApplication.taskManager()
             # Check if there are any running tasks name starting with 'Retrieve Data' before closing the dialog
             running_tasks = [
-                                task for task in task_manager.tasks()
+                                task for task in self.task_manager.tasks()
                                 if task.status() == QgsTask.Running and
                                 task.description().startswith('Retrieve Data') and
                                 not task.isCanceled()
