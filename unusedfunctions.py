@@ -246,3 +246,121 @@ def onFeatureIdentified(self,point):
             print(result.mFeature.attributes())   
             print("feature selected")  
 
+
+
+
+
+def bulk(uuidjson,fieldlist,selected_vintage,selected_layer,apikey,progressbar=None):
+    # Create the URL for the API request
+    # reset the progress bar
+    if progressbar is not None:
+        progressbar.reset()
+    with open(uuidjson, 'r') as f:
+        data = json.load(f)
+    
+    total_records = len(data)
+    total_fields = len(fieldlist)
+
+    # Get the data level to determine Number of fields to process at a time
+    url = f"https://api.costquest.com/accesscontrol/getaccess?userid={apikey}"
+    req = urllib.request.Request(url)
+    response = urllib.request.urlopen(req)
+    response_data = json.loads(response.read())
+    datalevel = response_data['info']['datalevel']
+
+    batch_size = 1000  # Number of records to process at a time
+
+    # Number of fields to process at a time
+    if datalevel == 100:
+        field_size = 25   
+    else:
+        field_size = 5  
+
+    hdr ={
+        # Request headers
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache',
+        'apikey': apikey,
+        }
+    
+    combined_data = []
+    for start_1 in range(0, total_fields, field_size):
+        fieldlist_sub = fieldlist[start_1:start_1 + field_size]
+        url = f"https://costquest.azure-api.net/fabric/{selected_vintage}/bulk/{selected_layer}?field=" + ",".join(fieldlist_sub)
+
+        for start in range(0, total_records, batch_size):
+            # Get the current batch of records
+            batch = data[start:start + batch_size]
+
+            req = urllib.request.Request(url, headers=hdr, data=json.dumps(batch).encode('utf-8'))
+
+            req.get_method = lambda: 'POST'
+            response = urllib.request.urlopen(req)
+            response_data = json.loads(response.read())
+            combined_data.extend(response_data)
+            # Update the progress bar if provided
+            if progressbar:
+                progressbar.setValue(progressbar.value() + int(start / total_records * (100-progressbar.value())))
+                progressbar.update()
+        
+        # join the data by uuid
+        combined_data_dict = {}
+        for item in combined_data:
+            if isinstance(item, dict):
+                uuid = item.get("uuid")
+                if uuid not in combined_data_dict:
+                    combined_data_dict[uuid] = {}
+                combined_data_dict[uuid].update(item)
+    if progressbar:
+        progressbar.setValue(100)
+        progressbar.update()
+    return combined_data_dict
+    
+
+
+def collect(geojson,selected_vintage,apikey):
+    global ids
+    global collect_calls
+    global divide_calls
+    # if collect_calls is not defined, initialize it
+    if 'collect_calls' not in globals():
+        collect_calls = 0
+        divide_calls = 0
+        ids = []            
+    collect_calls += 1
+    collect_ids = requests.post(baseuri + "fabric/" + selected_vintage + "/collect", json=geojson, headers={"apikey": apikey}).json()
+    if len(collect_ids)>=5000:
+        divide_results = requests.post(baseuri + "geosvc/divide", json=geojson, headers={"apikey": apikey}).json()
+        for db in divide_results:
+            divide_calls += 1
+            print("divide " + str(divide_calls))
+            collect(geojson,selected_vintage,apikey)
+    else:
+        print("adding " + str(len(collect_ids)) + " ids")
+        ids = ids + collect_ids
+    return ids
+
+
+def summarizefabricloc(geojson,selected_vintage,fieldlist,apikey):
+    try:
+        url = f"https://api.costquest.com/testing/{selected_vintage}/summarize?field="+",".join(fieldlist)
+
+
+        hdr ={
+        # Request headers
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache',
+        'apikey': apikey,
+        }
+
+        # Request body
+        data = json.dumps(geojson)
+        req = urllib.request.Request(url, headers=hdr, data = bytes(data.encode("utf-8")))
+
+        req.get_method = lambda: 'POST'
+        response = urllib.request.urlopen(req)
+        data = json.loads(response.read())
+        if response.getcode() == 200:
+            return data
+    except Exception as e:
+        print(e)

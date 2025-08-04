@@ -1,10 +1,23 @@
 import requests
 import json
 import urllib.request
+import os
+import sys
+
+plugin_dir = os.path.dirname(__file__)
+my_module_path = os.path.join(plugin_dir, "cqazapi-pytools") 
+sys.path.append(my_module_path)
+import importlib.util
+spec = importlib.util.spec_from_file_location("cqazapi_pytools", os.path.join(my_module_path, "__init__.py"))
+cqazapi_pytools = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(cqazapi_pytools)
+
 from qgis.core import QgsDataSourceUri, QgsVectorTileLayer
 
 
 baseuri = "https://api.costquest.com/"
+
+
 
 
 def verify_apikey(apikey):
@@ -46,6 +59,32 @@ def load_vintages(apikey):
         print("Failed to fetch vintages. HTTP Code:", response.getcode())
 
 
+
+
+def getlayersnames(apikey):
+        url = f"https://api.costquest.com/fabric/layers"
+
+        hdr ={
+        # Request headers
+        'Cache-Control': 'no-cache',
+        'apikey': apikey,
+        }
+
+        req = urllib.request.Request(url, headers=hdr)
+
+        req.get_method = lambda: 'GET'
+        response = urllib.request.urlopen(req)
+        if response.getcode() == 200:
+            data = json.loads(response.read())
+            # sort the data by listorder
+            layernames = [item.get('layername') for item in data if isinstance(item, dict)]
+            return layernames
+
+        else:
+            print("Failed to fetch layer names. HTTP Code:", response.getcode())
+
+
+
 def load_fabricvectortilelayer(selected_vintage,selected_layer,apikey):
     vector_tile_url = f"https://costquest.azure-api.net/fabric/{selected_vintage}/tiles/{selected_layer}/{{z}}/{{x}}/{{y}}"
     styleUrl = f"https://cqazapihttp.blob.core.windows.net/$web/fabricstyles.json"
@@ -69,98 +108,32 @@ def load_fabricvectortilelayer(selected_vintage,selected_layer,apikey):
     #self.iface.messageBar().pushMessage("Message", encoded_uri, level=Qgis.Info)
     # Create the vector tile layer
     vector_tile_layer = QgsVectorTileLayer(encoded_uri, f"Fabric {selected_vintage} - {selected_layer}")
+    
+    # Set scale dependent visibility
+    vector_tile_layer.setScaleBasedVisibility(True)
+    if selected_layer == "locations":
+        # Visible from all scales
+        vector_tile_layer.setMinimumScale(0)
+        vector_tile_layer.setMaximumScale(20000)  # 1:20,000
+    else:
+        # Only visible when zoomed in (e.g., between 1:10,000,000 and 1:100,000)
+        vector_tile_layer.setMinimumScale(80000)  # 1:80,000
+        vector_tile_layer.setMaximumScale(20000)    # 1:20,000
+
     return vector_tile_layer
 
+def collect_attach(selected_vintage, geojsonfile, fieldlist, apikey):
+    cp = cqazapi_pytools.cqazapipytools(apikey)
+    with open(geojsonfile, 'r') as f:
+        geojson = json.loads(f.read())
+    ids = cp.collect(selected_vintage, geojson)
+    combined_data = cp.attach(selected_vintage, ids, fieldlist)
+    return combined_data
 
-def bulk(uuidjson,fieldlist,selected_vintage,selected_layer,apikey,progressbar=None):
-    # Create the URL for the API request
-    # reset the progress bar
-    if progressbar is not None:
-        progressbar.reset()
-    with open(uuidjson, 'r') as f:
-        data = json.load(f)
-    
-    total_records = len(data)
-    total_fields = len(fieldlist)
-
-    # Get the data level to determine Number of fields to process at a time
-    url = f"https://api.costquest.com/accesscontrol/getaccess?userid={apikey}"
-    req = urllib.request.Request(url)
-    response = urllib.request.urlopen(req)
-    response_data = json.loads(response.read())
-    datalevel = response_data['info']['datalevel']
-
-    batch_size = 1000  # Number of records to process at a time
-
-    # Number of fields to process at a time
-    if datalevel == 100:
-        field_size = 25   
-    else:
-        field_size = 5  
-
-    hdr ={
-        # Request headers
-        'Content-Type': 'application/json',
-        'Cache-Control': 'no-cache',
-        'apikey': apikey,
-        }
-    
-    combined_data = []
-    for start_1 in range(0, total_fields, field_size):
-        fieldlist_sub = fieldlist[start_1:start_1 + field_size]
-        url = f"https://costquest.azure-api.net/fabric/{selected_vintage}/bulk/{selected_layer}?field=" + ",".join(fieldlist_sub)
-
-        for start in range(0, total_records, batch_size):
-            # Get the current batch of records
-            batch = data[start:start + batch_size]
-
-            req = urllib.request.Request(url, headers=hdr, data=json.dumps(batch).encode('utf-8'))
-
-            req.get_method = lambda: 'POST'
-            response = urllib.request.urlopen(req)
-            response_data = json.loads(response.read())
-            combined_data.extend(response_data)
-            # Update the progress bar if provided
-            if progressbar:
-                progressbar.setValue(progressbar.value() + int(start / total_records * (100-progressbar.value())))
-                progressbar.update()
-        
-        # join the data by uuid
-        combined_data_dict = {}
-        for item in combined_data:
-            if isinstance(item, dict):
-                uuid = item.get("uuid")
-                if uuid not in combined_data_dict:
-                    combined_data_dict[uuid] = {}
-                combined_data_dict[uuid].update(item)
-    if progressbar:
-        progressbar.setValue(100)
-        progressbar.update()
-    return combined_data_dict
-    
-
-
-def collect(geojson,selected_vintage,apikey):
-    global ids
-    global collect_calls
-    global divide_calls
-    # if collect_calls is not defined, initialize it
-    if 'collect_calls' not in globals():
-        collect_calls = 0
-        divide_calls = 0
-        ids = []            
-    collect_calls += 1
-    collect_ids = requests.post(baseuri + "fabric/" + selected_vintage + "/collect", json=geojson, headers={"apikey": apikey}).json()
-    if len(collect_ids)>=5000:
-        divide_results = requests.post(baseuri + "geosvc/divide", json=geojson, headers={"apikey": apikey}).json()
-        for db in divide_results:
-            divide_calls += 1
-            print("divide " + str(divide_calls))
-            collect(geojson,selected_vintage,apikey)
-    else:
-        print("adding " + str(len(collect_ids)) + " ids")
-        ids = ids + collect_ids
-    return ids
+def attach(selected_vintage,selected_layer, ids, fieldlist, apikey):
+    cp = cqazapi_pytools.cqazapipytools(apikey)
+    combined_data = cp.attach(selected_vintage, ids, fieldlist,layer=selected_layer)
+    return combined_data
 
 
 def individualdata(selected_vintage,selected_layer,apikey,uuid):
@@ -232,53 +205,6 @@ def getfieldsdisplayname(vintage:str,layer:str,apikey):
         else:
             print("Failed to fetch fieldname. HTTP Code:", response.getcode())
 
-
-def getlayersnames(apikey):
-        url = f"https://api.costquest.com/fabric/layers"
-
-        hdr ={
-        # Request headers
-        'Cache-Control': 'no-cache',
-        'apikey': apikey,
-        }
-
-        req = urllib.request.Request(url, headers=hdr)
-
-        req.get_method = lambda: 'GET'
-        response = urllib.request.urlopen(req)
-        if response.getcode() == 200:
-            data = json.loads(response.read())
-            # sort the data by listorder
-            layernames = [item.get('layername') for item in data if isinstance(item, dict)]
-            return layernames
-
-        else:
-            print("Failed to fetch layer names. HTTP Code:", response.getcode())
-
-
-def summarizefabricloc(geojson,selected_vintage,fieldlist,apikey):
-    try:
-        url = f"https://api.costquest.com/testing/{selected_vintage}/summarize?field="+",".join(fieldlist)
-
-
-        hdr ={
-        # Request headers
-        'Content-Type': 'application/json',
-        'Cache-Control': 'no-cache',
-        'apikey': apikey,
-        }
-
-        # Request body
-        data = json.dumps(geojson)
-        req = urllib.request.Request(url, headers=hdr, data = bytes(data.encode("utf-8")))
-
-        req.get_method = lambda: 'POST'
-        response = urllib.request.urlopen(req)
-        data = json.loads(response.read())
-        if response.getcode() == 200:
-            return data
-    except Exception as e:
-        print(e)
 
 
 def geocodeautocomplete(apikey, address):
