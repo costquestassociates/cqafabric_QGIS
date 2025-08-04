@@ -108,6 +108,18 @@ def load_fabricvectortilelayer(selected_vintage,selected_layer,apikey):
     #self.iface.messageBar().pushMessage("Message", encoded_uri, level=Qgis.Info)
     # Create the vector tile layer
     vector_tile_layer = QgsVectorTileLayer(encoded_uri, f"Fabric {selected_vintage} - {selected_layer}")
+    
+    # Set scale dependent visibility
+    vector_tile_layer.setScaleBasedVisibility(True)
+    if selected_layer == "locations":
+        # Visible from all scales
+        vector_tile_layer.setMinimumScale(0)
+        vector_tile_layer.setMaximumScale(20000)  # 1:20,000
+    else:
+        # Only visible when zoomed in (e.g., between 1:10,000,000 and 1:100,000)
+        vector_tile_layer.setMinimumScale(80000)  # 1:80,000
+        vector_tile_layer.setMaximumScale(20000)    # 1:20,000
+
     return vector_tile_layer
 
 def collect_attach(selected_vintage, geojsonfile, fieldlist, apikey):
