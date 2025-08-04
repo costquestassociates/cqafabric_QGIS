@@ -114,11 +114,11 @@ def load_fabricvectortilelayer(selected_vintage,selected_layer,apikey):
     if selected_layer == "locations":
         # Visible from all scales
         vector_tile_layer.setMinimumScale(0)
-        vector_tile_layer.setMaximumScale(20000)  # 1:20,000
+        vector_tile_layer.setMaximumScale(0)  # 1:20,000
     else:
         # Only visible when zoomed in (e.g., between 1:10,000,000 and 1:100,000)
         vector_tile_layer.setMinimumScale(80000)  # 1:80,000
-        vector_tile_layer.setMaximumScale(20000)    # 1:20,000
+        vector_tile_layer.setMaximumScale(0)    # 1:20,000
 
     return vector_tile_layer
 
