@@ -457,6 +457,7 @@ class CQAFabric:
             self.dlg.infoBox.setText("Please activate a boundary vector layer in Layers Panel.")
             self.dlg.infoBox.setStyleSheet("color: red;")
             self.dlg.label_layer_3.setStyleSheet("color: red; font-weight: bold;")
+            QApplication.processEvents()
 
     def load_geometry_result(self,vector_tile_layer,define_layer_name,selected_layer,selected_vintage,combined_data_values):
             self.dlg.progressBar.resetFormat()
@@ -468,6 +469,7 @@ class CQAFabric:
             
             self.dlg.infoBox.setText(f"Loading geometry for {resultName} layer...")
             self.dlg.infoBox.setStyleSheet("")    
+            QApplication.processEvents()
             if selected_layer == "locations":
                 layer = QgsVectorLayer("Point?crs="+vector_tile_layer.crs().authid()+"&field=uuid:string(255)", f"{resultName}", "memory")
             else:
@@ -511,6 +513,7 @@ class CQAFabric:
             self.dlg.saveBtn.setStyleSheet("color: gray;")
             # Update the progress bar
             self.dlg.progressBar.setFormat("Export Completed")
+            QApplication.processEvents()
             
     def load_csv_result(self,selected_layer,selected_vintage,combined_data_values,csv_filepath):
             self.dlg.progressBar.resetFormat()
@@ -539,6 +542,7 @@ class CQAFabric:
             self.dlg.saveBtn.setEnabled(False)
             self.dlg.saveBtn.setStyleSheet("color: gray;")
             self.dlg.progressBar.setFormat("Save Completed")
+            QApplication.processEvents()
 
 
     def populate_table_result(self): 
@@ -606,6 +610,7 @@ class CQAFabric:
                 self.dlg.setDisabled(False)
                 self.dlg.infoBox.setText("No features selected in "+ self.dlg.mapVlayersCb.currentText() + ". Please make selection.")
                 self.dlg.infoBox.setStyleSheet("color: red;")
+                QApplication.processEvents()
                 return
                 
             selected_vintage = self.dlg.comboBox_vintage.currentText()  # Get the selected vintage from the combo box vintage
@@ -747,6 +752,7 @@ class CQAFabric:
                         self.dlg.infoBox.setText("Error during selection: " + str(exception))
                         self.dlg.infoBox.setStyleSheet("color: red;")
                         self.dlg.setDisabled(False)
+                        QApplication.processEvents()
                         return
                     self.dlg.infoBox.setText(f"Retrieving {len(ids)} ids data ...")
                     self.dlg.infoBox.setStyleSheet("")
@@ -858,6 +864,7 @@ class CQAFabric:
             # Handle the case when the layer is not valid
             self.dlg.infoBox.setText("Failed to load vector tile layer.")
             self.dlg.infoBox.setStyleSheet("color: red;")
+        QApplication.processEvents()
 
 
     def remove_fabrictiles(self,name):
@@ -902,6 +909,7 @@ class CQAFabric:
         self.iface.mainWindow().findChildren(QWidget, 'Browser')[0].refresh()
         self.dlg.infoBox.setText(f"API Fabric {selected_vintage} {selected_layer} is added/updated to Browser")
         self.dlg.infoBox.setStyleSheet("color: green;")
+        QApplication.processEvents()
         
 
     def IdentifyData(self):  
@@ -1103,12 +1111,14 @@ class CQAFabric:
             if not self.dlg.checkBox_CSV.isChecked():
                 self.dlg.infoBox.setText("Searching for single address")
                 self.dlg.infoBox.setStyleSheet("")
+                QApplication.processEvents()
                 addresstexts = [{1:self.dlg.infoBox_input.text()}]
             else:
                 if self.dlg.mQgsFileWidget.filePath():
                     # Read the CSV file and get the texts from address column and sourcekey column. put them in a list [{sourcekey: address}]
                     self.dlg.infoBox.setText("Searching for addresses from CSV file")
                     self.dlg.infoBox.setStyleSheet("")
+                    QApplication.processEvents()
                     addresstexts = []
                     with open(self.dlg.mQgsFileWidget.filePath(), newline='', encoding='utf-8') as csvfile:
                         reader = csv.DictReader(csvfile)
@@ -1121,12 +1131,14 @@ class CQAFabric:
                             else:
                                 self.dlg.infoBox.setText("CSV file should contain 'address' and 'sourcekey' columns.")
                                 self.dlg.infoBox.setStyleSheet("color: red;")
+                                QApplication.processEvents()
                                 return
                     # get csv file name no extension
                     csv_filepath = self.dlg.mQgsFileWidget.filePath()
                 else:
                     self.dlg.infoBox.setText("CSV file is required for this operation.")
                     self.dlg.infoBox.setStyleSheet("color: red;")
+                    QApplication.processEvents()
                     return
             for addresstext in addresstexts:
                 for sourcekey, address in addresstext.items():
@@ -1150,6 +1162,7 @@ class CQAFabric:
             if not self.dlg.checkBox_CSV.isChecked():
                 self.dlg.infoBox.setText("Searching for single Coordinates")
                 self.dlg.infoBox.setStyleSheet("")
+                QApplication.processEvents()
                 coordinates = self.dlg.infoBox_input.text().split(",")
                 # convert coordinates to float
                 coordinates_1 = [float(coord.strip()) for coord in coordinates]
@@ -1170,6 +1183,7 @@ class CQAFabric:
                     # Read the CSV file and get the texts from address column and sourcekey column. put them in a list [{sourcekey: address}]
                     self.dlg.infoBox.setText("Searching for coordinates from CSV file")
                     self.dlg.infoBox.setStyleSheet("")
+                    QApplication.processEvents()
 
                     with open(self.dlg.mQgsFileWidget.filePath(), newline='', encoding='utf-8') as csvfile:
                         reader = csv.DictReader(csvfile)
@@ -1186,19 +1200,22 @@ class CQAFabric:
                             else:
                                 self.dlg.infoBox.setText("CSV file should contain 'latitude', 'longitude', and'sourcekey' columns.")
                                 self.dlg.infoBox.setStyleSheet("color: red;")
+                                QApplication.processEvents()
                                 return
                     # get csv file name no extension
                     csv_filepath = self.dlg.mQgsFileWidget.filePath()
                 else:
                     self.dlg.infoBox.setText("CSV file is required for this operation.")
                     self.dlg.infoBox.setStyleSheet("color: red;")
+                    QApplication.processEvents()
                     return
-        self.dlg.infoBox.setText(str(coordinates_data))
+        QApplication.processEvents()
         
         data_1 = locatefabric(apikey, selected_vintage, coordinates_data)
         if data_1:
             if self.dlg.checkBox_attribute.isChecked():
-                self.dlg.infoBox.setText("Locate fabrics completed successfully, starting to fetch data for each fabric.")
+                self.dlg.infoBox.setText("Locate fabrics completed successfully, starting to attach attribute data.")
+                QApplication.processEvents()
                 from collections import defaultdict
                 locationid_key = defaultdict(list)
                 for item in data_1:
@@ -1218,8 +1235,10 @@ class CQAFabric:
                 # }
                 if locationid_key:
                     if len(locationid_key)>1000:
-                        self.dlg.infoBox.setText("More than 5000 locations found, fetching data for only 1000.")
+                        self.dlg.infoBox.setText(f"{len(locationid_key)} locations found, fetching data for only 1000.")
+                        QApplication.processEvents()
                         locationid_key = list(locationid_key.items())[:1000]
+                        
                 
                     data_2 = translatefabric(apikey, selected_vintage, list(locationid_key.keys()), None, None)
                         
@@ -1280,6 +1299,7 @@ class CQAFabric:
                 self.dlg.tableResult.setRowHeight(row, 20)
             self.dlg.infoBox.setText(str(len(combined_data_values)) + " ids data retrieved successfully. Ready to Export.")
             self.dlg.infoBox.setStyleSheet("color: green;")
+            QApplication.processEvents()
             if csv_filepath:
                 self.dlg.saveBtn.setEnabled(True)
                 self.dlg.saveBtn.setStyleSheet("color: green;")
