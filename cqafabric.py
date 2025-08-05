@@ -1050,13 +1050,16 @@ class CQAFabric:
                         highlight = None
                     # remove layer selection
                     layer.removeSelection()
-                
-
 
             else:
                 self.iface.messageBar().pushMessage("Info", "No features found at the clicked location.", level=Qgis.Info)
                     
         except:
+                if highlight:
+                    highlight.hide()
+                    self.iface.mapCanvas().scene().removeItem(highlight)
+                    highlight = None
+    
                 self.iface.messageBar().pushMessage("Info", "Please activate a fabric vector tile layer in Layers Panel", level=Qgis.Info)
                 return False            
 
@@ -1225,12 +1228,7 @@ class CQAFabric:
                     displayname_dict = getfieldsdisplayname(selected_vintage,selected_layer,apikey)
                     ordered_keys = list(displayname_dict.keys())
                     ordered_keys.reverse()
-                    uuidjson_file = os.path.join(temp_dir, "selected_uuids.json")
-                    # Create a new GeoJSON file with the UUIDs
-                    with open(uuidjson_file, "w") as f:
-                        json.dump(ids, f, indent=2)
-                    combined_data = bulk(uuidjson_file,fieldnames,selected_vintage,selected_layer,apikey,self.dlg.progressBar)
-                    combined_data_values = list(combined_data.values())
+                    combined_data_values = attach(selected_vintage,selected_layer, ids, fieldnames, apikey)
                     data_add = []
                     for item in combined_data_values:
                         if len(locationid_key.get(item['location_id'])) > 1:

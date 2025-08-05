@@ -54,6 +54,7 @@ def load_vintages(apikey):
     if response.getcode() == 200:
         data = json.loads(response.read())
         vintages = [item.get('vintage') for item in data if isinstance(item, dict)]
+        vintages.sort(reverse=True)  # Sort vintages in descending order
         return vintages
     else:
         print("Failed to fetch vintages. HTTP Code:", response.getcode())
