@@ -26,9 +26,9 @@ from qgis.PyQt.QtGui import QIcon, QColor
 from qgis.PyQt.QtWidgets import QAction, QToolButton, QMenu
 from PyQt5.QtWidgets import QMessageBox, QScrollArea, QVBoxLayout, QLabel, QWidget, QPushButton, QLineEdit, QApplication
 from PyQt5.QtGui import QStandardItemModel, QStandardItem
-from qgis.core import QgsProject, QgsVectorLayer, Qgis, QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsSelectionContext, QgsFeature, QgsPointXY, QgsGeometry, QgsSettings, QgsMapLayer, QgsJsonExporter, QgsTask, QgsApplication
+from qgis.core import QgsProject, QgsVectorLayer, Qgis, QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsSelectionContext, QgsFeature, QgsPointXY, QgsGeometry, QgsSettings, QgsMapLayer, QgsJsonExporter, QgsTask, QgsApplication, QgsFeatureRequest
 import processing
-from qgis.gui import QgsMapToolEmitPoint, QgsHighlight
+from qgis.gui import QgsMapToolEmitPoint, QgsHighlight, QgsVertexMarker
 from .generalfunctions import *
 # Initialize Qt resources from file resources.py
 from .resources import *
@@ -457,6 +457,7 @@ class CQAFabric:
             self.dlg.infoBox.setText("Please activate a boundary vector layer in Layers Panel.")
             self.dlg.infoBox.setStyleSheet("color: red;")
             self.dlg.label_layer_3.setStyleSheet("color: red; font-weight: bold;")
+            QApplication.processEvents()
 
     def load_geometry_result(self,vector_tile_layer,define_layer_name,selected_layer,selected_vintage,combined_data_values):
             self.dlg.progressBar.resetFormat()
@@ -468,6 +469,7 @@ class CQAFabric:
             
             self.dlg.infoBox.setText(f"Loading geometry for {resultName} layer...")
             self.dlg.infoBox.setStyleSheet("")    
+            QApplication.processEvents()
             if selected_layer == "locations":
                 layer = QgsVectorLayer("Point?crs="+vector_tile_layer.crs().authid()+"&field=uuid:string(255)", f"{resultName}", "memory")
             else:
@@ -511,6 +513,7 @@ class CQAFabric:
             self.dlg.saveBtn.setStyleSheet("color: gray;")
             # Update the progress bar
             self.dlg.progressBar.setFormat("Export Completed")
+            QApplication.processEvents()
             
     def load_csv_result(self,selected_layer,selected_vintage,combined_data_values,csv_filepath):
             self.dlg.progressBar.resetFormat()
@@ -539,6 +542,7 @@ class CQAFabric:
             self.dlg.saveBtn.setEnabled(False)
             self.dlg.saveBtn.setStyleSheet("color: gray;")
             self.dlg.progressBar.setFormat("Save Completed")
+            QApplication.processEvents()
 
 
     def populate_table_result(self): 
@@ -606,6 +610,7 @@ class CQAFabric:
                 self.dlg.setDisabled(False)
                 self.dlg.infoBox.setText("No features selected in "+ self.dlg.mapVlayersCb.currentText() + ". Please make selection.")
                 self.dlg.infoBox.setStyleSheet("color: red;")
+                QApplication.processEvents()
                 return
                 
             selected_vintage = self.dlg.comboBox_vintage.currentText()  # Get the selected vintage from the combo box vintage
@@ -747,6 +752,7 @@ class CQAFabric:
                         self.dlg.infoBox.setText("Error during selection: " + str(exception))
                         self.dlg.infoBox.setStyleSheet("color: red;")
                         self.dlg.setDisabled(False)
+                        QApplication.processEvents()
                         return
                     self.dlg.infoBox.setText(f"Retrieving {len(ids)} ids data ...")
                     self.dlg.infoBox.setStyleSheet("")
@@ -858,6 +864,7 @@ class CQAFabric:
             # Handle the case when the layer is not valid
             self.dlg.infoBox.setText("Failed to load vector tile layer.")
             self.dlg.infoBox.setStyleSheet("color: red;")
+        QApplication.processEvents()
 
 
     def remove_fabrictiles(self,name):
@@ -902,6 +909,7 @@ class CQAFabric:
         self.iface.mainWindow().findChildren(QWidget, 'Browser')[0].refresh()
         self.dlg.infoBox.setText(f"API Fabric {selected_vintage} {selected_layer} is added/updated to Browser")
         self.dlg.infoBox.setStyleSheet("color: green;")
+        QApplication.processEvents()
         
 
     def IdentifyData(self):  
@@ -960,6 +968,8 @@ class CQAFabric:
         layer = self.iface.activeLayer()
         global highlight
         highlight = None
+        # Inside your class, add a new attribute to store the vertex marker
+        self.vertex_marker = None
         
         try:
 
@@ -968,97 +978,178 @@ class CQAFabric:
             url = uri.split("url=")[1].split("&")[0]
             selected_vintage = url.split("fabric/")[1].split("/")[0]
             selected_layer = url.split("tiles/")[1].split("/")[0]
-            
-            fieldnames = getfieldsinfo(selected_vintage, selected_layer, apikey)
-            
-            # Set up highlight variable
-
-            """Handle the point emitted by the map tool."""
-            # Clean the highlighted features
-            # Remove all highlights from the map canvas
-            #coords = "{}, {}".format(point.x(), point.y())
-            #self.dlg.lineEdit.setText(str(coords))
-  
             geom = QgsGeometry.fromPointXY(QgsPointXY(point.x(), point.y()))
-            pt_geom = QgsGeometry().fromWkt(geom.asWkt())
 
-            xform = QgsCoordinateTransform(QgsProject.instance().crs(), layer.crs(), QgsProject.instance())
-            pt_geom.transform(xform)
-
-            
             if selected_layer == "locations":
-                bb_geom = QgsGeometry().fromRect(pt_geom.buffer(5, 50).boundingBox())
-            else:
-                bb_geom = QgsGeometry().fromRect(pt_geom.buffer(0.001, 50).boundingBox())
-
-            # Add the bb_geom to the map canvas as temporary layer
-            # Create a new memory layer for the bounding box
             
+                # Set up highlight variable
+
+                """Handle the point emitted by the map tool."""
+                # Clean the highlighted features
+                # Remove all highlights from the map canvas
+                #coords = "{}, {}".format(point.x(), point.y())
+                #self.dlg.lineEdit.setText(str(coords))
+
+                # covert point x and y to WGS84 latitude and longitude
+                geom.transform(QgsCoordinateTransform(QgsProject.instance().crs(), QgsCoordinateReferenceSystem("EPSG:4326"), QgsProject.instance()))
+                # Get latitude and longitude from the point geometry
+                coordinates_data = data = [{
+                                    "latitude": geom.asPoint().y(),
+                                    "longitude": geom.asPoint().x(),
+                                    "sourcekey": 1
+                                    }]
+                data_1 = locatefabric(apikey, selected_vintage, coordinates_data)
+                # sort data_1 by distancem
+                data_1.sort(key=lambda x: x['distancem'])
+
+                # In the display_point method, replace the existing code for showing a point symbol with this:
 
 
-            context = QgsSelectionContext()
-            context.setScale(self.iface.mapCanvas().scale())
+                if data_1[0]['location_id']:
+                    locationid_key = [data_1[0]['location_id']]
+                    data_2 = translatefabric(apikey, selected_vintage, locationid_key, None, None)
+                    ids = [item['uuid']for item in data_2]
 
-            layer.selectByGeometry(bb_geom, context)
-            ids = []
-            highlight = None
-            # Get the selected features
-            for feature in layer.selectedFeatures():
-                tilegeom=feature.geometry()
-                # Highlight the feature on the map canvas
-                highlight = QgsHighlight(self.iface.mapCanvas(), tilegeom, layer)
-                highlight.setColor(QColor("red"))
-                highlight.show()
-                uuid = feature.attributes()[0]
-                ids.append(uuid)
-            
-            # Display the data in a scrollable message box
-            if ids:
-                displayname_dict = getfieldsdisplayname(selected_vintage,selected_layer,apikey)
-                ordered_keys = list(displayname_dict.keys())
-                ordered_keys.reverse()
-                for uuid in ids:
-                    data = individualdata(selected_vintage, selected_layer, apikey, uuid)
-                    # Format the data as a list of strings for the scrollable message box
-                    #displayname = [item.get('displayname') for item in data if isinstance(item, dict) and item.get('fieldname') == key][0]
-                    content_Dict ={}
-                    headers= list(data.keys())
-                    headers.sort(key=lambda x: ordered_keys.index(x) if x in ordered_keys else 9999)
-                    html_rows =''
-                    for key in headers:
-                        value = data.get(key)
-                        displayname = displayname_dict.get(key) if displayname_dict.get(key) else key
-                        html_rows = html_rows + f"<tr><td style='border: 1px solid black;'><b>{displayname}</b></td><td style='border: 1px solid black;'>{value}</td></tr>"
+                    # show a point symbol at the clicked location
+                    if self.vertex_marker:
+                        self.iface.mapCanvas().scene().removeItem(self.vertex_marker)
+                        self.vertex_marker = None
+
+                    # Create a new vertex marker
+                    self.vertex_marker = QgsVertexMarker(self.iface.mapCanvas())
+
+                    self.vertex_marker.setCenter(QgsPointXY(data_1[0]['longitude'], data_1[0]['latitude']))
+                    self.vertex_marker.setColor(QColor(255, 0, 0))
+                    self.vertex_marker.setIconSize(10)
+                    self.vertex_marker.setIconType(QgsVertexMarker.ICON_CIRCLE)
+                    self.vertex_marker.setPenWidth(3)
+
                 
-                    # Create the complete HTML content for the message box
-                    html_content = f"""
-                    <html>
-                        <body>
-                            <table style='border-collapse: collapse; width: 100%; border: 1px solid black;'>
-                                {html_rows}
-                            </table>
-                        </body>
-                    </html>
-                    """
-                    result = self.ScrollMessageBox([html_content])
-                    result.setWindowTitle(f"Fabric {selected_layer} - {selected_vintage}")
-                    result.exec_()
-                    # Clear the highlight after closing the message box
-                    if highlight:
-                        highlight.hide()
-                        self.iface.mapCanvas().scene().removeItem(highlight)
-                        highlight = None
-                    # remove layer selection
-                    layer.removeSelection()
-                
+                # Display the data in a scrollable message box
+                    displayname_dict = getfieldsdisplayname(selected_vintage,selected_layer,apikey)
+                    ordered_keys = list(displayname_dict.keys())
+                    ordered_keys.reverse()
+                    for uuid in ids:
+                        data = individualdata(selected_vintage, selected_layer, apikey, uuid)
+                        # Format the data as a list of strings for the scrollable message box
+                        #displayname = [item.get('displayname') for item in data if isinstance(item, dict) and item.get('fieldname') == key][0]
+                        content_Dict ={}
+                        headers= list(data.keys())
+                        headers.sort(key=lambda x: ordered_keys.index(x) if x in ordered_keys else 9999)
+                        html_rows =''
+                        for key in headers:
+                            value = data.get(key)
+                            displayname = displayname_dict.get(key) if displayname_dict.get(key) else key
+                            html_rows = html_rows + f"<tr><td style='border: 1px solid black;'><b>{displayname}</b></td><td style='border: 1px solid black;'>{value}</td></tr>"
+                    
+                        # Create the complete HTML content for the message box
+                        html_content = f"""
+                        <html>
+                            <body>
+                                <table style='border-collapse: collapse; width: 100%; border: 1px solid black;'>
+                                    {html_rows}
+                                </table>
+                            </body>
+                        </html>
+                        """
+                        result = self.ScrollMessageBox([html_content])
+                        result.setWindowTitle(f"Fabric {selected_layer} - {selected_vintage}")
+                        result.exec_()
+                        # Clear the highlight after closing the message box
+                        if self.vertex_marker:
+                            self.iface.mapCanvas().scene().removeItem(self.vertex_marker)
+                            self.vertex_marker = None
 
-
+                else:
+                    self.iface.messageBar().pushMessage("Info", "No features found at the clicked location.", level=Qgis.Info)
             else:
-                self.iface.messageBar().pushMessage("Info", "No features found at the clicked location.", level=Qgis.Info)
+                pt_geom = QgsGeometry().fromWkt(geom.asWkt())
+
+                xform = QgsCoordinateTransform(QgsProject.instance().crs(), layer.crs(), QgsProject.instance())
+                pt_geom.transform(xform)
+
+                
+                if selected_layer == "locations":
+                    bb_geom = QgsGeometry().fromRect(pt_geom.buffer(5, 50).boundingBox())
+                else:
+                    bb_geom = QgsGeometry().fromRect(pt_geom.buffer(0.001, 50).boundingBox())
+
+                # Add the bb_geom to the map canvas as temporary layer
+                # Create a new memory layer for the bounding box
+                
+
+
+                context = QgsSelectionContext()
+                context.setScale(self.iface.mapCanvas().scale())
+
+                layer.selectByGeometry(bb_geom, context)
+                ids = []
+                highlight = None
+                # Get the selected features
+                for feature in layer.selectedFeatures():
+                    tilegeom=feature.geometry()
+                    # Highlight the feature on the map canvas
+                    highlight = QgsHighlight(self.iface.mapCanvas(), tilegeom, layer)
+                    highlight.setColor(QColor("red"))
+                    highlight.show()
+                    uuid = feature.attributes()[0]
+                    ids.append(uuid)
+                
+                # Display the data in a scrollable message box
+                if ids:
+                    displayname_dict = getfieldsdisplayname(selected_vintage,selected_layer,apikey)
+                    ordered_keys = list(displayname_dict.keys())
+                    ordered_keys.reverse()
+                    for uuid in ids:
+                        data = individualdata(selected_vintage, selected_layer, apikey, uuid)
+                        # Format the data as a list of strings for the scrollable message box
+                        #displayname = [item.get('displayname') for item in data if isinstance(item, dict) and item.get('fieldname') == key][0]
+                        content_Dict ={}
+                        headers= list(data.keys())
+                        headers.sort(key=lambda x: ordered_keys.index(x) if x in ordered_keys else 9999)
+                        html_rows =''
+                        for key in headers:
+                            value = data.get(key)
+                            displayname = displayname_dict.get(key) if displayname_dict.get(key) else key
+                            html_rows = html_rows + f"<tr><td style='border: 1px solid black;'><b>{displayname}</b></td><td style='border: 1px solid black;'>{value}</td></tr>"
+                    
+                        # Create the complete HTML content for the message box
+                        html_content = f"""
+                        <html>
+                            <body>
+                                <table style='border-collapse: collapse; width: 100%; border: 1px solid black;'>
+                                    {html_rows}
+                                </table>
+                            </body>
+                        </html>
+                        """
+                        result = self.ScrollMessageBox([html_content])
+                        result.setWindowTitle(f"Fabric {selected_layer} - {selected_vintage}")
+                        result.exec_()
+                        # Clear the highlight after closing the message box
+                        if highlight:
+                            highlight.hide()
+                            self.iface.mapCanvas().scene().removeItem(highlight)
+                            highlight = None
+                        # remove layer selection
+                        layer.removeSelection()
+
+                else:
+                    self.iface.messageBar().pushMessage("Info", "No features found at the clicked location.", level=Qgis.Info)
+                        
                     
         except:
-                self.iface.messageBar().pushMessage("Info", "Please activate a fabric vector tile layer in Layers Panel", level=Qgis.Info)
-                return False            
+            if self.vertex_marker:
+                self.iface.mapCanvas().scene().removeItem(self.vertex_marker)
+                self.vertex_marker = None
+            
+            if highlight:
+                highlight.hide()
+                self.iface.mapCanvas().scene().removeItem(highlight)
+                highlight = None
+
+            self.iface.messageBar().pushMessage("Info", "Please activate a fabric vector tile layer in Layers Panel", level=Qgis.Info)
+            return False            
 
 
     def LocateFabric(self):
@@ -1098,14 +1189,16 @@ class CQAFabric:
         if self.dlg.AddrButton.isChecked():
             coordinates_data = []
             if not self.dlg.checkBox_CSV.isChecked():
-                self.dlg.infoBox.setText("Searching for single address")
+                self.dlg.infoBox.setText("Searching for single address...")
                 self.dlg.infoBox.setStyleSheet("")
+                QApplication.processEvents()
                 addresstexts = [{1:self.dlg.infoBox_input.text()}]
             else:
                 if self.dlg.mQgsFileWidget.filePath():
                     # Read the CSV file and get the texts from address column and sourcekey column. put them in a list [{sourcekey: address}]
-                    self.dlg.infoBox.setText("Searching for addresses from CSV file")
+                    self.dlg.infoBox.setText("Searching for addresses from CSV file...")
                     self.dlg.infoBox.setStyleSheet("")
+                    QApplication.processEvents()
                     addresstexts = []
                     with open(self.dlg.mQgsFileWidget.filePath(), newline='', encoding='utf-8') as csvfile:
                         reader = csv.DictReader(csvfile)
@@ -1118,12 +1211,14 @@ class CQAFabric:
                             else:
                                 self.dlg.infoBox.setText("CSV file should contain 'address' and 'sourcekey' columns.")
                                 self.dlg.infoBox.setStyleSheet("color: red;")
+                                QApplication.processEvents()
                                 return
                     # get csv file name no extension
                     csv_filepath = self.dlg.mQgsFileWidget.filePath()
                 else:
                     self.dlg.infoBox.setText("CSV file is required for this operation.")
                     self.dlg.infoBox.setStyleSheet("color: red;")
+                    QApplication.processEvents()
                     return
             for addresstext in addresstexts:
                 for sourcekey, address in addresstext.items():
@@ -1145,8 +1240,9 @@ class CQAFabric:
         elif self.dlg.CoorButton.isChecked():
             coordinates_data = []
             if not self.dlg.checkBox_CSV.isChecked():
-                self.dlg.infoBox.setText("Searching for single Coordinates")
+                self.dlg.infoBox.setText("Searching for single Coordinates...")
                 self.dlg.infoBox.setStyleSheet("")
+                QApplication.processEvents()
                 coordinates = self.dlg.infoBox_input.text().split(",")
                 # convert coordinates to float
                 coordinates_1 = [float(coord.strip()) for coord in coordinates]
@@ -1165,8 +1261,9 @@ class CQAFabric:
             else:
                 if self.dlg.mQgsFileWidget.filePath():
                     # Read the CSV file and get the texts from address column and sourcekey column. put them in a list [{sourcekey: address}]
-                    self.dlg.infoBox.setText("Searching for coordinates from CSV file")
+                    self.dlg.infoBox.setText("Searching for coordinates from CSV file...")
                     self.dlg.infoBox.setStyleSheet("")
+                    QApplication.processEvents()
 
                     with open(self.dlg.mQgsFileWidget.filePath(), newline='', encoding='utf-8') as csvfile:
                         reader = csv.DictReader(csvfile)
@@ -1183,19 +1280,22 @@ class CQAFabric:
                             else:
                                 self.dlg.infoBox.setText("CSV file should contain 'latitude', 'longitude', and'sourcekey' columns.")
                                 self.dlg.infoBox.setStyleSheet("color: red;")
+                                QApplication.processEvents()
                                 return
                     # get csv file name no extension
                     csv_filepath = self.dlg.mQgsFileWidget.filePath()
                 else:
                     self.dlg.infoBox.setText("CSV file is required for this operation.")
                     self.dlg.infoBox.setStyleSheet("color: red;")
+                    QApplication.processEvents()
                     return
-        self.dlg.infoBox.setText(str(coordinates_data))
+        QApplication.processEvents()
         
         data_1 = locatefabric(apikey, selected_vintage, coordinates_data)
         if data_1:
             if self.dlg.checkBox_attribute.isChecked():
-                self.dlg.infoBox.setText("Locate fabrics completed successfully, starting to fetch data for each fabric.")
+                self.dlg.infoBox.setText("Locate fabrics completed successfully, starting to attach attributes...")
+                QApplication.processEvents()
                 from collections import defaultdict
                 locationid_key = defaultdict(list)
                 for item in data_1:
@@ -1215,8 +1315,10 @@ class CQAFabric:
                 # }
                 if locationid_key:
                     if len(locationid_key)>1000:
-                        self.dlg.infoBox.setText("More than 5000 locations found, fetching data for only 1000.")
+                        self.dlg.infoBox.setText(f"{len(locationid_key)} locations found, fetching data for only 1000...")
+                        QApplication.processEvents()
                         locationid_key = list(locationid_key.items())[:1000]
+                        
                 
                     data_2 = translatefabric(apikey, selected_vintage, list(locationid_key.keys()), None, None)
                         
@@ -1225,12 +1327,7 @@ class CQAFabric:
                     displayname_dict = getfieldsdisplayname(selected_vintage,selected_layer,apikey)
                     ordered_keys = list(displayname_dict.keys())
                     ordered_keys.reverse()
-                    uuidjson_file = os.path.join(temp_dir, "selected_uuids.json")
-                    # Create a new GeoJSON file with the UUIDs
-                    with open(uuidjson_file, "w") as f:
-                        json.dump(ids, f, indent=2)
-                    combined_data = bulk(uuidjson_file,fieldnames,selected_vintage,selected_layer,apikey,self.dlg.progressBar)
-                    combined_data_values = list(combined_data.values())
+                    combined_data_values = attach(selected_vintage,selected_layer, ids, fieldnames, apikey)
                     data_add = []
                     for item in combined_data_values:
                         if len(locationid_key.get(item['location_id'])) > 1:
@@ -1282,6 +1379,7 @@ class CQAFabric:
                 self.dlg.tableResult.setRowHeight(row, 20)
             self.dlg.infoBox.setText(str(len(combined_data_values)) + " ids data retrieved successfully. Ready to Export.")
             self.dlg.infoBox.setStyleSheet("color: green;")
+            QApplication.processEvents()
             if csv_filepath:
                 self.dlg.saveBtn.setEnabled(True)
                 self.dlg.saveBtn.setStyleSheet("color: green;")
