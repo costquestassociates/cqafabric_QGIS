@@ -1109,14 +1109,14 @@ class CQAFabric:
         if self.dlg.AddrButton.isChecked():
             coordinates_data = []
             if not self.dlg.checkBox_CSV.isChecked():
-                self.dlg.infoBox.setText("Searching for single address")
+                self.dlg.infoBox.setText("Searching for single address...")
                 self.dlg.infoBox.setStyleSheet("")
                 QApplication.processEvents()
                 addresstexts = [{1:self.dlg.infoBox_input.text()}]
             else:
                 if self.dlg.mQgsFileWidget.filePath():
                     # Read the CSV file and get the texts from address column and sourcekey column. put them in a list [{sourcekey: address}]
-                    self.dlg.infoBox.setText("Searching for addresses from CSV file")
+                    self.dlg.infoBox.setText("Searching for addresses from CSV file...")
                     self.dlg.infoBox.setStyleSheet("")
                     QApplication.processEvents()
                     addresstexts = []
@@ -1160,7 +1160,7 @@ class CQAFabric:
         elif self.dlg.CoorButton.isChecked():
             coordinates_data = []
             if not self.dlg.checkBox_CSV.isChecked():
-                self.dlg.infoBox.setText("Searching for single Coordinates")
+                self.dlg.infoBox.setText("Searching for single Coordinates...")
                 self.dlg.infoBox.setStyleSheet("")
                 QApplication.processEvents()
                 coordinates = self.dlg.infoBox_input.text().split(",")
@@ -1181,7 +1181,7 @@ class CQAFabric:
             else:
                 if self.dlg.mQgsFileWidget.filePath():
                     # Read the CSV file and get the texts from address column and sourcekey column. put them in a list [{sourcekey: address}]
-                    self.dlg.infoBox.setText("Searching for coordinates from CSV file")
+                    self.dlg.infoBox.setText("Searching for coordinates from CSV file...")
                     self.dlg.infoBox.setStyleSheet("")
                     QApplication.processEvents()
 
@@ -1214,7 +1214,7 @@ class CQAFabric:
         data_1 = locatefabric(apikey, selected_vintage, coordinates_data)
         if data_1:
             if self.dlg.checkBox_attribute.isChecked():
-                self.dlg.infoBox.setText("Locate fabrics completed successfully, starting to attach attribute data.")
+                self.dlg.infoBox.setText("Locate fabrics completed successfully, starting to attach attributes...")
                 QApplication.processEvents()
                 from collections import defaultdict
                 locationid_key = defaultdict(list)
@@ -1235,7 +1235,7 @@ class CQAFabric:
                 # }
                 if locationid_key:
                     if len(locationid_key)>1000:
-                        self.dlg.infoBox.setText(f"{len(locationid_key)} locations found, fetching data for only 1000.")
+                        self.dlg.infoBox.setText(f"{len(locationid_key)} locations found, fetching data for only 1000...")
                         QApplication.processEvents()
                         locationid_key = list(locationid_key.items())[:1000]
                         
