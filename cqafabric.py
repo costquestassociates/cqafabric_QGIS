@@ -471,18 +471,31 @@ class CQAFabric:
             self.dlg.infoBox.setStyleSheet("")    
             QApplication.processEvents()
             if selected_layer == "locations":
-                layer = QgsVectorLayer("Point?crs="+vector_tile_layer.crs().authid()+"&field=uuid:string(255)", f"{resultName}", "memory")
-            else:
-                layer = QgsVectorLayer("Polygon?crs="+vector_tile_layer.crs().authid()+"&field=uuid:string(255)", f"{resultName}", "memory")
-            layer.startEditing()
-            for feature in vector_tile_layer.selectedFeatures():
+                # Create a point layer using WGS 84 as the CRS
+                layer = QgsVectorLayer("Point?crs=EPSG:4326&field=uuid:string(255)", f"{resultName}", "memory")
+                # use the latitude and longitude from combined_data_values
+                layer.startEditing()
+                for feature in combined_data_values:
                     newfeature = QgsFeature()
-                    tilegeom=feature.geometry()
-                    newfeature.setGeometry(tilegeom)
-                    uuid=feature.attributes()[0]
+                    # create a point geometry from latitude and longitude
+                    point_geom = QgsGeometry.fromPointXY(QgsPointXY(feature['longitude'], feature['latitude']))
+                    newfeature.setGeometry(point_geom)
+                    uuid = feature['uuid']
                     newfeature.setAttributes([uuid])
                     layer.dataProvider().addFeatures([newfeature])
-            layer.commitChanges()      
+                layer.commitChanges()
+
+            else:
+                layer = QgsVectorLayer("Polygon?crs="+vector_tile_layer.crs().authid()+"&field=uuid:string(255)", f"{resultName}", "memory")
+                layer.startEditing()
+                for feature in vector_tile_layer.selectedFeatures():
+                        newfeature = QgsFeature()
+                        tilegeom=feature.geometry()
+                        newfeature.setGeometry(tilegeom)
+                        uuid=feature.attributes()[0]
+                        newfeature.setAttributes([uuid])
+                        layer.dataProvider().addFeatures([newfeature])
+                layer.commitChanges()      
 
             csvoutput_file = os.path.join(temp_dir, f"{resultName}.csv")
             
