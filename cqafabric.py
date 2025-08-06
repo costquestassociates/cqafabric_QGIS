@@ -26,9 +26,9 @@ from qgis.PyQt.QtGui import QIcon, QColor
 from qgis.PyQt.QtWidgets import QAction, QToolButton, QMenu
 from PyQt5.QtWidgets import QMessageBox, QScrollArea, QVBoxLayout, QLabel, QWidget, QPushButton, QLineEdit, QApplication
 from PyQt5.QtGui import QStandardItemModel, QStandardItem
-from qgis.core import QgsProject, QgsVectorLayer, Qgis, QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsSelectionContext, QgsFeature, QgsPointXY, QgsGeometry, QgsSettings, QgsMapLayer, QgsJsonExporter, QgsTask, QgsApplication
+from qgis.core import QgsProject, QgsVectorLayer, Qgis, QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsSelectionContext, QgsFeature, QgsPointXY, QgsGeometry, QgsSettings, QgsMapLayer, QgsJsonExporter, QgsTask, QgsApplication, QgsFeatureRequest
 import processing
-from qgis.gui import QgsMapToolEmitPoint, QgsHighlight
+from qgis.gui import QgsMapToolEmitPoint, QgsHighlight, QgsVertexMarker
 from .generalfunctions import *
 # Initialize Qt resources from file resources.py
 from .resources import *
@@ -968,6 +968,8 @@ class CQAFabric:
         layer = self.iface.activeLayer()
         global highlight
         highlight = None
+        # Inside your class, add a new attribute to store the vertex marker
+        self.vertex_marker = None
         
         try:
 
@@ -976,100 +978,178 @@ class CQAFabric:
             url = uri.split("url=")[1].split("&")[0]
             selected_vintage = url.split("fabric/")[1].split("/")[0]
             selected_layer = url.split("tiles/")[1].split("/")[0]
-            
-            fieldnames = getfieldsinfo(selected_vintage, selected_layer, apikey)
-            
-            # Set up highlight variable
-
-            """Handle the point emitted by the map tool."""
-            # Clean the highlighted features
-            # Remove all highlights from the map canvas
-            #coords = "{}, {}".format(point.x(), point.y())
-            #self.dlg.lineEdit.setText(str(coords))
-  
             geom = QgsGeometry.fromPointXY(QgsPointXY(point.x(), point.y()))
-            pt_geom = QgsGeometry().fromWkt(geom.asWkt())
 
-            xform = QgsCoordinateTransform(QgsProject.instance().crs(), layer.crs(), QgsProject.instance())
-            pt_geom.transform(xform)
-
-            
             if selected_layer == "locations":
-                bb_geom = QgsGeometry().fromRect(pt_geom.buffer(5, 50).boundingBox())
-            else:
-                bb_geom = QgsGeometry().fromRect(pt_geom.buffer(0.001, 50).boundingBox())
-
-            # Add the bb_geom to the map canvas as temporary layer
-            # Create a new memory layer for the bounding box
             
+                # Set up highlight variable
+
+                """Handle the point emitted by the map tool."""
+                # Clean the highlighted features
+                # Remove all highlights from the map canvas
+                #coords = "{}, {}".format(point.x(), point.y())
+                #self.dlg.lineEdit.setText(str(coords))
+
+                # covert point x and y to WGS84 latitude and longitude
+                geom.transform(QgsCoordinateTransform(QgsProject.instance().crs(), QgsCoordinateReferenceSystem("EPSG:4326"), QgsProject.instance()))
+                # Get latitude and longitude from the point geometry
+                coordinates_data = data = [{
+                                    "latitude": geom.asPoint().y(),
+                                    "longitude": geom.asPoint().x(),
+                                    "sourcekey": 1
+                                    }]
+                data_1 = locatefabric(apikey, selected_vintage, coordinates_data)
+                # sort data_1 by distancem
+                data_1.sort(key=lambda x: x['distancem'])
+
+                # In the display_point method, replace the existing code for showing a point symbol with this:
 
 
-            context = QgsSelectionContext()
-            context.setScale(self.iface.mapCanvas().scale())
+                if data_1[0]['location_id']:
+                    locationid_key = [data_1[0]['location_id']]
+                    data_2 = translatefabric(apikey, selected_vintage, locationid_key, None, None)
+                    ids = [item['uuid']for item in data_2]
 
-            layer.selectByGeometry(bb_geom, context)
-            ids = []
-            highlight = None
-            # Get the selected features
-            for feature in layer.selectedFeatures():
-                tilegeom=feature.geometry()
-                # Highlight the feature on the map canvas
-                highlight = QgsHighlight(self.iface.mapCanvas(), tilegeom, layer)
-                highlight.setColor(QColor("red"))
-                highlight.show()
-                uuid = feature.attributes()[0]
-                ids.append(uuid)
-            
-            # Display the data in a scrollable message box
-            if ids:
-                displayname_dict = getfieldsdisplayname(selected_vintage,selected_layer,apikey)
-                ordered_keys = list(displayname_dict.keys())
-                ordered_keys.reverse()
-                for uuid in ids:
-                    data = individualdata(selected_vintage, selected_layer, apikey, uuid)
-                    # Format the data as a list of strings for the scrollable message box
-                    #displayname = [item.get('displayname') for item in data if isinstance(item, dict) and item.get('fieldname') == key][0]
-                    content_Dict ={}
-                    headers= list(data.keys())
-                    headers.sort(key=lambda x: ordered_keys.index(x) if x in ordered_keys else 9999)
-                    html_rows =''
-                    for key in headers:
-                        value = data.get(key)
-                        displayname = displayname_dict.get(key) if displayname_dict.get(key) else key
-                        html_rows = html_rows + f"<tr><td style='border: 1px solid black;'><b>{displayname}</b></td><td style='border: 1px solid black;'>{value}</td></tr>"
+                    # show a point symbol at the clicked location
+                    if self.vertex_marker:
+                        self.iface.mapCanvas().scene().removeItem(self.vertex_marker)
+                        self.vertex_marker = None
+
+                    # Create a new vertex marker
+                    self.vertex_marker = QgsVertexMarker(self.iface.mapCanvas())
+
+                    self.vertex_marker.setCenter(QgsPointXY(data_1[0]['longitude'], data_1[0]['latitude']))
+                    self.vertex_marker.setColor(QColor(255, 0, 0))
+                    self.vertex_marker.setIconSize(10)
+                    self.vertex_marker.setIconType(QgsVertexMarker.ICON_CIRCLE)
+                    self.vertex_marker.setPenWidth(3)
+
                 
-                    # Create the complete HTML content for the message box
-                    html_content = f"""
-                    <html>
-                        <body>
-                            <table style='border-collapse: collapse; width: 100%; border: 1px solid black;'>
-                                {html_rows}
-                            </table>
-                        </body>
-                    </html>
-                    """
-                    result = self.ScrollMessageBox([html_content])
-                    result.setWindowTitle(f"Fabric {selected_layer} - {selected_vintage}")
-                    result.exec_()
-                    # Clear the highlight after closing the message box
-                    if highlight:
-                        highlight.hide()
-                        self.iface.mapCanvas().scene().removeItem(highlight)
-                        highlight = None
-                    # remove layer selection
-                    layer.removeSelection()
+                # Display the data in a scrollable message box
+                    displayname_dict = getfieldsdisplayname(selected_vintage,selected_layer,apikey)
+                    ordered_keys = list(displayname_dict.keys())
+                    ordered_keys.reverse()
+                    for uuid in ids:
+                        data = individualdata(selected_vintage, selected_layer, apikey, uuid)
+                        # Format the data as a list of strings for the scrollable message box
+                        #displayname = [item.get('displayname') for item in data if isinstance(item, dict) and item.get('fieldname') == key][0]
+                        content_Dict ={}
+                        headers= list(data.keys())
+                        headers.sort(key=lambda x: ordered_keys.index(x) if x in ordered_keys else 9999)
+                        html_rows =''
+                        for key in headers:
+                            value = data.get(key)
+                            displayname = displayname_dict.get(key) if displayname_dict.get(key) else key
+                            html_rows = html_rows + f"<tr><td style='border: 1px solid black;'><b>{displayname}</b></td><td style='border: 1px solid black;'>{value}</td></tr>"
+                    
+                        # Create the complete HTML content for the message box
+                        html_content = f"""
+                        <html>
+                            <body>
+                                <table style='border-collapse: collapse; width: 100%; border: 1px solid black;'>
+                                    {html_rows}
+                                </table>
+                            </body>
+                        </html>
+                        """
+                        result = self.ScrollMessageBox([html_content])
+                        result.setWindowTitle(f"Fabric {selected_layer} - {selected_vintage}")
+                        result.exec_()
+                        # Clear the highlight after closing the message box
+                        if self.vertex_marker:
+                            self.iface.mapCanvas().scene().removeItem(self.vertex_marker)
+                            self.vertex_marker = None
 
+                else:
+                    self.iface.messageBar().pushMessage("Info", "No features found at the clicked location.", level=Qgis.Info)
             else:
-                self.iface.messageBar().pushMessage("Info", "No features found at the clicked location.", level=Qgis.Info)
+                pt_geom = QgsGeometry().fromWkt(geom.asWkt())
+
+                xform = QgsCoordinateTransform(QgsProject.instance().crs(), layer.crs(), QgsProject.instance())
+                pt_geom.transform(xform)
+
+                
+                if selected_layer == "locations":
+                    bb_geom = QgsGeometry().fromRect(pt_geom.buffer(5, 50).boundingBox())
+                else:
+                    bb_geom = QgsGeometry().fromRect(pt_geom.buffer(0.001, 50).boundingBox())
+
+                # Add the bb_geom to the map canvas as temporary layer
+                # Create a new memory layer for the bounding box
+                
+
+
+                context = QgsSelectionContext()
+                context.setScale(self.iface.mapCanvas().scale())
+
+                layer.selectByGeometry(bb_geom, context)
+                ids = []
+                highlight = None
+                # Get the selected features
+                for feature in layer.selectedFeatures():
+                    tilegeom=feature.geometry()
+                    # Highlight the feature on the map canvas
+                    highlight = QgsHighlight(self.iface.mapCanvas(), tilegeom, layer)
+                    highlight.setColor(QColor("red"))
+                    highlight.show()
+                    uuid = feature.attributes()[0]
+                    ids.append(uuid)
+                
+                # Display the data in a scrollable message box
+                if ids:
+                    displayname_dict = getfieldsdisplayname(selected_vintage,selected_layer,apikey)
+                    ordered_keys = list(displayname_dict.keys())
+                    ordered_keys.reverse()
+                    for uuid in ids:
+                        data = individualdata(selected_vintage, selected_layer, apikey, uuid)
+                        # Format the data as a list of strings for the scrollable message box
+                        #displayname = [item.get('displayname') for item in data if isinstance(item, dict) and item.get('fieldname') == key][0]
+                        content_Dict ={}
+                        headers= list(data.keys())
+                        headers.sort(key=lambda x: ordered_keys.index(x) if x in ordered_keys else 9999)
+                        html_rows =''
+                        for key in headers:
+                            value = data.get(key)
+                            displayname = displayname_dict.get(key) if displayname_dict.get(key) else key
+                            html_rows = html_rows + f"<tr><td style='border: 1px solid black;'><b>{displayname}</b></td><td style='border: 1px solid black;'>{value}</td></tr>"
+                    
+                        # Create the complete HTML content for the message box
+                        html_content = f"""
+                        <html>
+                            <body>
+                                <table style='border-collapse: collapse; width: 100%; border: 1px solid black;'>
+                                    {html_rows}
+                                </table>
+                            </body>
+                        </html>
+                        """
+                        result = self.ScrollMessageBox([html_content])
+                        result.setWindowTitle(f"Fabric {selected_layer} - {selected_vintage}")
+                        result.exec_()
+                        # Clear the highlight after closing the message box
+                        if highlight:
+                            highlight.hide()
+                            self.iface.mapCanvas().scene().removeItem(highlight)
+                            highlight = None
+                        # remove layer selection
+                        layer.removeSelection()
+
+                else:
+                    self.iface.messageBar().pushMessage("Info", "No features found at the clicked location.", level=Qgis.Info)
+                        
                     
         except:
-                if highlight:
-                    highlight.hide()
-                    self.iface.mapCanvas().scene().removeItem(highlight)
-                    highlight = None
-    
-                self.iface.messageBar().pushMessage("Info", "Please activate a fabric vector tile layer in Layers Panel", level=Qgis.Info)
-                return False            
+            if self.vertex_marker:
+                self.iface.mapCanvas().scene().removeItem(self.vertex_marker)
+                self.vertex_marker = None
+            
+            if highlight:
+                highlight.hide()
+                self.iface.mapCanvas().scene().removeItem(highlight)
+                highlight = None
+
+            self.iface.messageBar().pushMessage("Info", "Please activate a fabric vector tile layer in Layers Panel", level=Qgis.Info)
+            return False            
 
 
     def LocateFabric(self):

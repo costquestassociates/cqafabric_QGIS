@@ -50,18 +50,22 @@ class IdentifyDataDialog(QtWidgets.QDialog, FORM_CLASS):
         self.setupUi(self)
         self._initConnections()
         # when the dialog is opened, if the active layer is a vector tile layer, set it as the current layer
-        active_layer = iface.activeLayer()
-        if isinstance(active_layer, QgsVectorTileLayer):
-            self._layer = active_layer
-            index = self.mapVlayersCb.findText(active_layer.name())
-            if index != -1:
-                self.mapVlayersCb.setCurrentIndex(index)
-        else:
-            self._layer: QgsVectorTileLayer = None
-            self.mapVlayersCb.setCurrentIndex(-1)
+        self._layer: QgsVectorTileLayer = None
+        self.mapVlayersCb.setCurrentIndex(-1)
 
     def _initConnections(self):
-        self.mapVlayersCb.setFilters(QgsMapLayerProxyModel.VectorTileLayer)
+        # remove all layers from the combobox
+        self.mapVlayersCb.clear()
+        # loop through all the vector tiles and check the source URI
+        layers =[]
+
+        for layer in QgsProject.instance().mapLayers().values():
+            if isinstance(layer, QgsVectorTileLayer):
+                uri = layer.dataProvider().dataSourceUri()
+                if "https://costquest.azure-api.net/fabric" in uri:  # only add vector tiles with http source URI
+                    layers.append(layer)
+        self.mapVlayersCb.setAdditionalLayers(layers)
+
         self.mapVlayersCb.setCurrentIndex(-1)  # TODO bringt nix :(
         self.mapVlayersCb.layerChanged.connect(self._layerChanged)
         self.mapVlayersCb.activated.connect(self._layerActivated)
@@ -94,4 +98,8 @@ class IdentifyDataDialog(QtWidgets.QDialog, FORM_CLASS):
             self._layer = layer
             self.layerChanged.emit(self._layer)
             iface.setActiveLayer(layer)
+            node = iface.layerTreeView().layerTreeModel().rootGroup().findLayer(layer.id())
+            if node is not None:
+                node.setItemVisibilityChecked(True)
+
 
