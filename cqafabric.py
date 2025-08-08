@@ -528,6 +528,7 @@ class CQAFabric:
             self.dlg.progressBar.setFormat("Export Completed")
             QApplication.processEvents()
             
+            
     def load_csv_result(self,selected_layer,selected_vintage,combined_data_values,csv_filepath):
             self.dlg.progressBar.resetFormat()
             # get csv file path without extension
@@ -577,6 +578,10 @@ class CQAFabric:
         global selected_layer
         global selected_vintage
         global combined_data_values
+        # remove combined_data_values if it exists
+        if 'combined_data_values' in globals():
+            del combined_data_values
+        
         # Do something useful here - delete the line containing pass and
         # substitute with your code.
         # Show a message while the data is being retrieved
@@ -613,12 +618,14 @@ class CQAFabric:
             self.iface.setActiveLayer(selected_layer_obj)
             layer = self.iface.activeLayer()
             
+
             # Open attribute table of the active layer
-            if self.dlg.checkBox_selection.isChecked(): # Use only selected features
-                selected_features = layer.selectedFeatures()
-            else:   # Use all features
+            if not self.dlg.checkBox_selection.isChecked(): # Use only selected features
                 layer.selectAll()
                 QApplication.processEvents()
+
+            selected_features = layer.selectedFeatures()
+            
             if not selected_features:
                 self.dlg.setDisabled(False)
                 self.dlg.infoBox.setText("No features selected in "+ self.dlg.mapVlayersCb.currentText() + ". Please make selection.")
@@ -683,7 +690,14 @@ class CQAFabric:
                             os.remove(input_file)
                         except Exception:
                             pass
-                        combined_data_values = collect_attach(selected_vintage, output_file, selected_fields, apikey)
+                        try:
+                            combined_data_values = collect_attach(selected_vintage, output_file, selected_fields, apikey)
+                        except Exception as exception:
+                            self.dlg.infoBox.setText("Error during retrieving data: collect attach api - " + str(exception))
+                            self.dlg.infoBox.setStyleSheet("color: red;")
+                            self.dlg.setDisabled(False)
+                            QApplication.processEvents()
+                            return
                         return combined_data_values
 
 
@@ -771,7 +785,14 @@ class CQAFabric:
                     self.dlg.infoBox.setStyleSheet("")
                     QApplication.processEvents()
                     self.dlg.progressBar.resetFormat()
-                    combined_data_values = attach(selected_vintage,selected_layer, ids, selected_fields, apikey)
+                    try:
+                        combined_data_values = attach(selected_vintage,selected_layer, ids, selected_fields, apikey)
+                    except Exception as exception:
+                        self.dlg.infoBox.setText("Error during retrieving data: attach api - " + str(exception))
+                        self.dlg.infoBox.setStyleSheet("color: red;")
+                        self.dlg.setDisabled(False)
+                        QApplication.processEvents()
+                        return
                     return combined_data_values
                 # Run selection in background
                 def on_finished(exception, result=None):
