@@ -618,12 +618,14 @@ class CQAFabric:
             self.iface.setActiveLayer(selected_layer_obj)
             layer = self.iface.activeLayer()
             
+
             # Open attribute table of the active layer
-            if self.dlg.checkBox_selection.isChecked(): # Use only selected features
-                selected_features = layer.selectedFeatures()
-            else:   # Use all features
+            if not self.dlg.checkBox_selection.isChecked(): # Use only selected features
                 layer.selectAll()
                 QApplication.processEvents()
+
+            selected_features = layer.selectedFeatures()
+            
             if not selected_features:
                 self.dlg.setDisabled(False)
                 self.dlg.infoBox.setText("No features selected in "+ self.dlg.mapVlayersCb.currentText() + ". Please make selection.")
