@@ -93,8 +93,7 @@ class IdentifyDataDialog(QtWidgets.QDialog, FORM_CLASS):
             iface.setActiveLayer(layer)
 
     def _layerChanged(self, layer: QgsMapLayer):
-        if self._layer != layer:
-
+        if self._layer != layer and layer is not None:
             self._layer = layer
             self.layerChanged.emit(self._layer)
             iface.setActiveLayer(layer)
