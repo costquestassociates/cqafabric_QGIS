@@ -256,7 +256,54 @@ def geocodestructured(apikey, address, city, state,  zipcode):
         print(e)
         return None
 
+def matchautocomplete(apikey, address,vintage):
+    try:
+        # replace spaces with %20 for URL encoding
+        address = address.replace(" ", "%20")
+        url = f"https://api.costquest.com/fabricext/{vintage}/match?text={address}"
 
+        hdr ={
+        # Request headers
+        'Cache-Control': 'no-cache',
+        'apikey': apikey,
+        }
+
+        req = urllib.request.Request(url, headers=hdr)
+
+        req.get_method = lambda: 'GET'
+        response = urllib.request.urlopen(req)
+        if response.getcode() == 200:
+            data = json.loads(response.read())
+            return data 
+    except Exception as e:
+        print(e)
+        return None
+    
+
+def matchstructured(apikey, house_number,road, city, state,  postcode, vintage):
+    try:
+        url = f"https://api.costquest.com/fabricext/{vintage}/match?house_number={house_number}&road={road}&city={city}&state={state}&postalcode={postcode}".replace(" ", "%20")
+
+        hdr ={
+        # Request headers
+        'Cache-Control': 'no-cache',
+        'apikey': apikey,
+        }
+
+        req = urllib.request.Request(url, headers=hdr)
+
+        req.get_method = lambda: 'GET'
+        response = urllib.request.urlopen(req)
+        if response.getcode() == 200:
+            data = json.loads(response.read())
+            return data
+        else:
+            print("Failed to fetch address. HTTP Code:", response.getcode())
+            return None   
+    except Exception as e:
+        print(e)
+        return None
+    
 def locatefabric(apikey, vintage, sourcedata):
     ''' example: 
     data = [{
