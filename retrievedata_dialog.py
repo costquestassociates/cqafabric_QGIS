@@ -172,7 +172,7 @@ class RetrieveDataDialog(QtWidgets.QDialog, FORM_CLASS):
     def getavailablefields(vintage:str,layer:str,apikey):
         if not vintage or not layer: 
             return []   
-        url = f"https://costquest.azure-api.net/fabric/{vintage}/fields/{layer}"
+        url = f"https://api.costquest.com/fabric/{vintage}/fields/{layer}"
         hdr ={
         # Request headers
         'Cache-Control': 'no-cache',

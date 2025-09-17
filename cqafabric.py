@@ -1254,21 +1254,17 @@ class CQAFabric:
                     self.dlg.infoBox.setStyleSheet("color: red;")
                     QApplication.processEvents()
                     return
+            data_1 = []
             for addresstext in addresstexts:
                 for sourcekey, address in addresstext.items():
-                    data = geocodeautocomplete(apikey, address)
+                    data = matchautocomplete(apikey, address, selected_vintage)
                     if data: 
                         for key, value in data.items():
                             coordinates = None
-                            if key == "features":
+                            if key == "locations":
                                 for item in value:
-                                    coordinates =item['geometry']['coordinates']
-                                    # Create a list of dictionaries with latitude and longitude
-                                    coordinates_data.append ({
-                                        "latitude": coordinates[1],
-                                        "longitude": coordinates[0],
-                                        "sourcekey": sourcekey
-                                        })
+                                    data_1.append({"uuid":item['uuid'],"location_id":item['location_id'],"Latitude":item['latitude'],"Longitude":item['longitude'],"sourcekey": sourcekey})
+                          
                                     
 
         elif self.dlg.CoorButton.isChecked():
@@ -1323,9 +1319,9 @@ class CQAFabric:
                     self.dlg.infoBox.setStyleSheet("color: red;")
                     QApplication.processEvents()
                     return
-        QApplication.processEvents()
         
-        data_1 = locatefabric(apikey, selected_vintage, coordinates_data)
+        
+            data_1 = locatefabric(apikey, selected_vintage, coordinates_data)
         if data_1:
             if self.dlg.checkBox_attribute.isChecked():
                 self.dlg.infoBox.setText("Locate fabrics completed successfully, starting to attach attributes...")
@@ -1348,12 +1344,6 @@ class CQAFabric:
                 #     'loc2': ['B']
                 # }
                 if locationid_key:
-                    if len(locationid_key)>1000:
-                        self.dlg.infoBox.setText(f"{len(locationid_key)} locations found, fetching data for only 1000...")
-                        QApplication.processEvents()
-                        locationid_key = list(locationid_key.items())[:1000]
-                        
-                
                     data_2 = translatefabric(apikey, selected_vintage, list(locationid_key.keys()), None, None)
                         
                     ids = [item.get('uuid') for item in data_2 if isinstance(item, dict)]
