@@ -41,7 +41,7 @@ def verify_apikey(apikey):
 
 
 def load_vintages(apikey):
-    url = "https://costquest.azure-api.net/fabric/vintages"
+    url = "https://api.costquest.com/fabric/vintages"
 
     hdr ={
     # Request headers
@@ -87,7 +87,7 @@ def getlayersnames(apikey):
 
 
 def load_fabricvectortilelayer(selected_vintage,selected_layer,apikey):
-    vector_tile_url = f"https://costquest.azure-api.net/fabric/{selected_vintage}/tiles/{selected_layer}/{{z}}/{{x}}/{{y}}"
+    vector_tile_url = f"https://api.costquest.com/fabric/{selected_vintage}/tiles/{selected_layer}/{{z}}/{{x}}/{{y}}"
     styleUrl = f"https://cqazapihttp.blob.core.windows.net/$web/fabricstyles.json"
     # Create a QgsDataSourceUri object
     uri = QgsDataSourceUri()
@@ -140,7 +140,7 @@ def attach(selected_vintage,selected_layer, ids, fieldlist, apikey):
 def individualdata(selected_vintage,selected_layer,apikey,uuid):
     if not selected_vintage or not selected_layer: 
             return []
-    url = f"https://costquest.azure-api.net/fabric/{selected_vintage}/data/{selected_layer}?uuid={uuid}"
+    url = f"https://api.costquest.com/fabric/{selected_vintage}/data/{selected_layer}?uuid={uuid}"
 
     hdr ={
     # Request headers
@@ -162,7 +162,7 @@ def individualdata(selected_vintage,selected_layer,apikey,uuid):
 def getfieldsinfo(vintage:str,layer:str,apikey):
         if not vintage or not layer: 
             return []
-        url = f"https://costquest.azure-api.net/fabric/{vintage}/fields/{layer}"
+        url = f"https://api.costquest.com/fabric/{vintage}/fields/{layer}"
 
         hdr ={
         # Request headers
@@ -185,7 +185,7 @@ def getfieldsinfo(vintage:str,layer:str,apikey):
 def getfieldsdisplayname(vintage:str,layer:str,apikey):   
         if not vintage or not layer: 
             return []  
-        url = f"https://costquest.azure-api.net/fabric/{vintage}/fields/{layer}"
+        url = f"https://api.costquest.com/fabric/{vintage}/fields/{layer}"
 
         hdr ={
         # Request headers

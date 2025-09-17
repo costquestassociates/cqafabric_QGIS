@@ -286,7 +286,7 @@ def bulk(uuidjson,fieldlist,selected_vintage,selected_layer,apikey,progressbar=N
     combined_data = []
     for start_1 in range(0, total_fields, field_size):
         fieldlist_sub = fieldlist[start_1:start_1 + field_size]
-        url = f"https://costquest.azure-api.net/fabric/{selected_vintage}/bulk/{selected_layer}?field=" + ",".join(fieldlist_sub)
+        url = f"https://api.costquest.com/fabric/{selected_vintage}/bulk/{selected_layer}?field=" + ",".join(fieldlist_sub)
 
         for start in range(0, total_records, batch_size):
             # Get the current batch of records

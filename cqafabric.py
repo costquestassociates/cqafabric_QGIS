@@ -923,7 +923,7 @@ class CQAFabric:
             zmin="12"
         sources = []
         sources.append([f"API Fabric {selected_vintage} {selected_layer}", 
-                        "https://costquest.azure-api.net/fabric/%s/tiles/%s/{z}/{x}/{y}" % (selected_vintage, selected_layer),
+                        "https://api.costquest.com/fabric/%s/tiles/%s/{z}/{x}/{y}" % (selected_vintage, selected_layer),
                         "14", 
                         zmin,
                         "no-cache",
