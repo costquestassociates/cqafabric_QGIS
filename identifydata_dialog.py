@@ -62,7 +62,7 @@ class IdentifyDataDialog(QtWidgets.QDialog, FORM_CLASS):
         for layer in QgsProject.instance().mapLayers().values():
             if isinstance(layer, QgsVectorTileLayer):
                 uri = layer.dataProvider().dataSourceUri()
-                if "https://costquest.azure-api.net/fabric" in uri:  # only add vector tiles with http source URI
+                if "https://api.costquest.com/fabric" in uri:  # only add vector tiles with http source URI
                     layers.append(layer)
         self.mapVlayersCb.setAdditionalLayers(layers)
 
