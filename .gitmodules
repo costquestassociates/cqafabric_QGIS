@@ -1,0 +1,3 @@
+[submodule "cqazapi-pytools"]
+	path = cqazapi-pytools
+	url = git@github.com:costquestassociates/cqazapi-pytools.git
