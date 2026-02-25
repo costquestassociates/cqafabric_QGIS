@@ -19,9 +19,12 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
-      - name: Create zip
+      - name: Create zip (single top-level folder)
         run: |
-          zip -r cqafabric_qgis.zip . -x ".git/*"
+          rm -rf package
+          mkdir -p package/cqafabric_qgis
+          rsync -a --exclude ".git" --exclude "package" ./ package/cqafabric_qgis/
+          (cd package && zip -r ../cqafabric_qgis.zip cqafabric_qgis)
 
       - name: Create release and upload zip
         uses: softprops/action-gh-release@v2
