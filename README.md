@@ -4,7 +4,7 @@
 &nbsp;&nbsp;&nbsp;&nbsp;![cqafabric](icons/Fabric-3_CircleBG_Patina-100.png)
 
 <h2>Installation</h2>
-    <li><a href="https://github.com/costquestassociates/cqafabric_QGIS/releases/latest" target="_blank">Download</a> master repository from github</li>
+    <li><a href="https://github.com/costquestassociates/cqafabric_QGIS/releases/latest" target="_blank">Download</a> latest release zip file from github</li>
 	<li>In QGIS, open <code>Plugins &gt; Manage and Install Plugins... &gt; Install from ZIP</code></li>	
 
 <h2>User Authentication</h2>
