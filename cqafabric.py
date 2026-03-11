@@ -933,10 +933,16 @@ class CQAFabric:
         # Add sources to browser
         for source in sources:
             connectionName = source[0]
+            authcfg_id = get_or_create_apikey_authcfg(apikey)
             QgsSettings().setValue("connections/vector-tile/items/%s/url" % (connectionName), source[1])
             QgsSettings().setValue("connections/vector-tile/items/%s/zmax" % (connectionName), source[2])
             QgsSettings().setValue("connections/vector-tile/items/%s/zmin" % (connectionName), source[3])
-            QgsSettings().setValue("connections/vector-tile/items/%s/http-header" % (connectionName), {'Cache-Control':source[4],'apikey':source[5]})
+            if authcfg_id:
+                QgsSettings().setValue("connections/vector-tile/items/%s/authcfg" % (connectionName), authcfg_id)
+                QgsSettings().setValue("connections/vector-tile/items/%s/http-header" % (connectionName), {'Cache-Control': source[4]})
+            else:
+                QgsSettings().setValue("connections/vector-tile/items/%s/authcfg" % (connectionName), "")
+                QgsSettings().setValue("connections/vector-tile/items/%s/http-header" % (connectionName), {'Cache-Control':source[4],'apikey':source[5]})
             QgsSettings().setValue("connections/vector-tile/items/%s/styleUrl" % (connectionName), source[6])
 
         # Refresh the browser

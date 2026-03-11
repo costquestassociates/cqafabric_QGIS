@@ -3,6 +3,8 @@ import json
 import urllib.request
 import os
 import sys
+from PyQt5.QtCore import QUrl
+from PyQt5.QtNetwork import QNetworkRequest
 
 plugin_dir = os.path.dirname(__file__)
 my_module_path = os.path.join(plugin_dir, "cqazapi-pytools") 
@@ -12,10 +14,79 @@ spec = importlib.util.spec_from_file_location("cqazapi_pytools", os.path.join(my
 cqazapi_pytools = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cqazapi_pytools)
 
-from qgis.core import QgsDataSourceUri, QgsVectorTileLayer
+from qgis.core import QgsApplication, QgsAuthMethodConfig, QgsDataSourceUri, QgsSettings, QgsVectorTileLayer
 
 
 baseuri = "https://api.costquest.com/"
+
+
+def get_or_create_apikey_authcfg(apikey):
+    """
+    Store/reuse API key in QGIS auth DB and return authcfg id.
+    Returns empty string if auth manager is unavailable or config cannot be stored.
+    """
+    if not apikey:
+        return ""
+
+    auth_manager = QgsApplication.authManager()
+    if auth_manager is None:
+        return ""
+
+    def _as_ok(result):
+        if isinstance(result, tuple):
+            return bool(result[0]) if len(result) > 0 else False
+        return bool(result)
+
+    def _load_cfg(authcfg_id):
+        cfg = QgsAuthMethodConfig()
+        result = auth_manager.loadAuthenticationConfig(authcfg_id, cfg, True)
+        if isinstance(result, tuple):
+            ok = bool(result[0]) if len(result) > 0 else False
+            if len(result) > 1 and isinstance(result[1], QgsAuthMethodConfig):
+                cfg = result[1]
+            return ok, cfg
+        return bool(result), cfg
+
+    def _authcfg_has_expected_apikey(authcfg_id, expected_apikey):
+        req = QNetworkRequest(QUrl("https://api.costquest.com/fabric/vintages"))
+        if not _as_ok(auth_manager.updateNetworkRequest(req, authcfg_id)):
+            return False
+        if not req.hasRawHeader(b"apikey"):
+            return False
+        return bytes(req.rawHeader(b"apikey")).decode("utf-8", errors="ignore") == expected_apikey
+
+    settings = QgsSettings()
+    settings_key = "cqafabric/authcfg_id"
+    existing_authcfg = settings.value(settings_key, "", type=str)
+
+    if existing_authcfg:
+        load_ok, existing_cfg = _load_cfg(existing_authcfg)
+        if load_ok and existing_cfg.method().lower() == "apiheader":
+            if _authcfg_has_expected_apikey(existing_authcfg, apikey):
+                return existing_authcfg
+        settings.remove(settings_key)
+
+    cfg = QgsAuthMethodConfig()
+    cfg.setName("CQA Fabric API Key")
+    cfg.setMethod("APIHeader")
+    cfg.setConfigMap({
+        "name": "apikey",
+        "value": apikey,
+    })
+
+    store_result = auth_manager.storeAuthenticationConfig(cfg)
+    if isinstance(store_result, tuple):
+        store_ok = bool(store_result[0]) if len(store_result) > 0 else False
+        if len(store_result) > 1 and isinstance(store_result[1], QgsAuthMethodConfig):
+            cfg = store_result[1]
+    else:
+        store_ok = bool(store_result)
+
+    if store_ok and cfg.id() and _authcfg_has_expected_apikey(cfg.id(), apikey):
+        settings.setValue(settings_key, cfg.id())
+        return cfg.id()
+
+    return ""
 
 
 
@@ -101,7 +172,13 @@ def load_fabricvectortilelayer(selected_vintage,selected_layer,apikey):
         uri.setParam("zmin", "0")  # Minimum zoom level
     else:
         uri.setParam("zmin", "12")
-    uri.setParam("http-header:apikey",apikey)  # API key for authentication
+    # Prefer authcfg so API key is not serialized into layer source.
+    authcfg_id = get_or_create_apikey_authcfg(apikey)
+    if authcfg_id:
+        uri.setParam("authcfg", authcfg_id)
+    else:
+        # Fallback for environments where APIHeader auth method is unavailable.
+        uri.setParam("http-header:apikey",apikey)  # API key for authentication
     uri.setParam("http-header:Cache-Control", "no-cache")  # Cache control header
 
     # Encode the URI
