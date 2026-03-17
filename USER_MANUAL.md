@@ -7,7 +7,6 @@
 The plugin provides six main workflows:
 
 - `Log In` to store and reuse your API key
-- `Open Demo` to create a guided sample workflow in QGIS
 - `Add Fabric Tiles` to add Fabric layers to the map or the QGIS Browser
 - `Retrieve Fabric` to pull attribute data for an area of interest
 - `Identify Fabric` to click a Fabric feature and inspect its attributes
@@ -189,8 +188,6 @@ The plugin creates or uses the following local files:
 
 - Saved API key configuration: `C:\Users\<your-user>\AppData\Roaming\QGIS\QGIS_CQAFabric.config`
 - Temporary and demo files root folder: `C:\Users\<your-user>\AppData\Roaming\QGIS\Temp\`
-- Demo address CSV created by `Open Demo`: `...\Temp\cqafabric_demo\locate_addresses_demo.csv`
-- Demo coordinate CSV created by `Open Demo`: `...\Temp\cqafabric_demo\locate_coordinates_demo.csv`
 
 ## Troubleshooting
 
@@ -218,15 +215,6 @@ The plugin creates or uses the following local files:
 - Verify the required column names are present.
 - Make sure the CSV file is readable and uses standard comma-separated formatting.
 
-## Recommended First Workflow
-
-For a new user, this is the simplest order:
-
-1. Log in with your API key.
-2. Run `Open Demo`.
-3. Test `Locate Fabric` with the prefilled sample.
-4. Use `Retrieve Fabric` with `CQAFabric Demo AOI`.
-5. Use `Identify Fabric` on the loaded Fabric layer.
 
 ## Support
 
