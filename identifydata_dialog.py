@@ -27,7 +27,7 @@ import os
 from qgis.PyQt import uic, QtCore
 from qgis.PyQt import QtWidgets
 from qgis.PyQt.QtCore import Qt
-from qgis.core import QgsMapLayerProxyModel, QgsVectorLayer, QgsProject, QgsMapLayer, QgsVectorTileLayer
+from qgis.core import QgsMapLayerProxyModel, QgsVectorLayer, QgsProject, QgsMapLayer, QgsVectorTileLayer, QgsSettings
 from qgis.gui import QgsMapLayerComboBox
 from qgis.utils import iface
 
@@ -38,6 +38,7 @@ FORM_CLASS, _ = uic.loadUiType(os.path.join(
 
 class IdentifyDataDialog(QtWidgets.QDialog, FORM_CLASS):
     layerChanged = QtCore.pyqtSignal(QgsVectorLayer)
+    SETTINGS_KEY_LAST_LAYER_ID = "cqafabric/identify_last_layer_id"
 
     mapVlayerCb: QgsMapLayerComboBox
     def __init__(self, parent=None):
@@ -49,22 +50,24 @@ class IdentifyDataDialog(QtWidgets.QDialog, FORM_CLASS):
         # http://qt-project.org/doc/qt-4.8/designer-using-a-ui-file.html
         # #widgets-and-dialogs-with-auto-connect
         self.setupUi(self)
-        self._initConnections()
-        # when the dialog is opened, if the active layer is a vector tile layer, set it as the current layer
         self._layer: QgsVectorTileLayer = None
+        self._available_layers = []
+        self._initConnections()
         self.mapVlayersCb.setCurrentIndex(-1)
+        self._applyDefaultLayerSelection()
 
     def _initConnections(self):
         # remove all layers from the combobox
         self.mapVlayersCb.clear()
         # loop through all the vector tiles and check the source URI
-        layers =[]
+        layers = []
 
         for layer in QgsProject.instance().mapLayers().values():
             if isinstance(layer, QgsVectorTileLayer):
                 uri = layer.dataProvider().dataSourceUri()
                 if "https://api.costquest.com/fabric" in uri:  # only add vector tiles with http source URI
                     layers.append(layer)
+        self._available_layers = layers
         self.mapVlayersCb.setAdditionalLayers(layers)
 
         self.mapVlayersCb.setCurrentIndex(-1)  # TODO bringt nix :(
@@ -91,16 +94,58 @@ class IdentifyDataDialog(QtWidgets.QDialog, FORM_CLASS):
         if self._layer != layer:
             self._layer = layer
             self.layerChanged.emit(self._layer)
+            self._storeLastLayer(layer)
             iface.setActiveLayer(layer)
 
     def _layerChanged(self, layer: QgsMapLayer):
         if self._layer != layer and layer is not None:
             self._layer = layer
             self.layerChanged.emit(self._layer)
+            self._storeLastLayer(layer)
             iface.setActiveLayer(layer)
             node = iface.layerTreeView().layerTreeModel().rootGroup().findLayer(layer.id())
             if node is not None:
                 node.setItemVisibilityChecked(True)
+
+    def _isFabricVectorTileLayer(self, layer):
+        if not isinstance(layer, QgsVectorTileLayer):
+            return False
+        try:
+            uri = layer.dataProvider().dataSourceUri()
+        except Exception:
+            return False
+        return "https://api.costquest.com/fabric" in uri
+
+    def _storeLastLayer(self, layer):
+        if layer is None:
+            return
+        QgsSettings().setValue(self.SETTINGS_KEY_LAST_LAYER_ID, layer.id())
+
+    def _lastLayer(self):
+        last_layer_id = QgsSettings().value(self.SETTINGS_KEY_LAST_LAYER_ID, "", type=str)
+        if not last_layer_id:
+            return None
+        layer = QgsProject.instance().mapLayer(last_layer_id)
+        if self._isFabricVectorTileLayer(layer):
+            return layer
+        return None
+
+    def _applyDefaultLayerSelection(self):
+        preferred_layer = None
+
+        active_layer = iface.activeLayer()
+        if self._isFabricVectorTileLayer(active_layer):
+            preferred_layer = active_layer
+        elif len(self._available_layers) == 1:
+            preferred_layer = self._available_layers[0]
+        else:
+            preferred_layer = self._lastLayer()
+
+        if preferred_layer is not None:
+            self.mapVlayersCb.setLayer(preferred_layer)
+            self._layer = preferred_layer
+            self.layerChanged.emit(self._layer)
+            self._storeLastLayer(preferred_layer)
 
 
 class IdentifyPopupDialog(QtWidgets.QDialog):
