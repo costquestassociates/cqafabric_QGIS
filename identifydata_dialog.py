@@ -26,7 +26,8 @@ import os
 
 from qgis.PyQt import uic, QtCore
 from qgis.PyQt import QtWidgets
-from qgis.core import QgsMapLayerProxyModel, QgsVectorLayer, QgsProject, QgsMapLayer, QgsVectorTileLayer
+from qgis.PyQt.QtCore import Qt
+from qgis.core import QgsMapLayerProxyModel, QgsVectorLayer, QgsProject, QgsMapLayer, QgsVectorTileLayer, QgsSettings
 from qgis.gui import QgsMapLayerComboBox
 from qgis.utils import iface
 
@@ -37,6 +38,7 @@ FORM_CLASS, _ = uic.loadUiType(os.path.join(
 
 class IdentifyDataDialog(QtWidgets.QDialog, FORM_CLASS):
     layerChanged = QtCore.pyqtSignal(QgsVectorLayer)
+    SETTINGS_KEY_LAST_LAYER_ID = "cqafabric/identify_last_layer_id"
 
     mapVlayerCb: QgsMapLayerComboBox
     def __init__(self, parent=None):
@@ -48,22 +50,24 @@ class IdentifyDataDialog(QtWidgets.QDialog, FORM_CLASS):
         # http://qt-project.org/doc/qt-4.8/designer-using-a-ui-file.html
         # #widgets-and-dialogs-with-auto-connect
         self.setupUi(self)
-        self._initConnections()
-        # when the dialog is opened, if the active layer is a vector tile layer, set it as the current layer
         self._layer: QgsVectorTileLayer = None
+        self._available_layers = []
+        self._initConnections()
         self.mapVlayersCb.setCurrentIndex(-1)
+        self._applyDefaultLayerSelection()
 
     def _initConnections(self):
         # remove all layers from the combobox
         self.mapVlayersCb.clear()
         # loop through all the vector tiles and check the source URI
-        layers =[]
+        layers = []
 
         for layer in QgsProject.instance().mapLayers().values():
             if isinstance(layer, QgsVectorTileLayer):
                 uri = layer.dataProvider().dataSourceUri()
                 if "https://api.costquest.com/fabric" in uri:  # only add vector tiles with http source URI
                     layers.append(layer)
+        self._available_layers = layers
         self.mapVlayersCb.setAdditionalLayers(layers)
 
         self.mapVlayersCb.setCurrentIndex(-1)  # TODO bringt nix :(
@@ -90,15 +94,122 @@ class IdentifyDataDialog(QtWidgets.QDialog, FORM_CLASS):
         if self._layer != layer:
             self._layer = layer
             self.layerChanged.emit(self._layer)
+            self._storeLastLayer(layer)
             iface.setActiveLayer(layer)
 
     def _layerChanged(self, layer: QgsMapLayer):
         if self._layer != layer and layer is not None:
             self._layer = layer
             self.layerChanged.emit(self._layer)
+            self._storeLastLayer(layer)
             iface.setActiveLayer(layer)
             node = iface.layerTreeView().layerTreeModel().rootGroup().findLayer(layer.id())
             if node is not None:
                 node.setItemVisibilityChecked(True)
 
+    def _isFabricVectorTileLayer(self, layer):
+        if not isinstance(layer, QgsVectorTileLayer):
+            return False
+        try:
+            uri = layer.dataProvider().dataSourceUri()
+        except Exception:
+            return False
+        return "https://api.costquest.com/fabric" in uri
 
+    def _storeLastLayer(self, layer):
+        if layer is None:
+            return
+        QgsSettings().setValue(self.SETTINGS_KEY_LAST_LAYER_ID, layer.id())
+
+    def _lastLayer(self):
+        last_layer_id = QgsSettings().value(self.SETTINGS_KEY_LAST_LAYER_ID, "", type=str)
+        if not last_layer_id:
+            return None
+        layer = QgsProject.instance().mapLayer(last_layer_id)
+        if self._isFabricVectorTileLayer(layer):
+            return layer
+        return None
+
+    def _applyDefaultLayerSelection(self):
+        preferred_layer = None
+
+        active_layer = iface.activeLayer()
+        if self._isFabricVectorTileLayer(active_layer):
+            preferred_layer = active_layer
+        elif len(self._available_layers) == 1:
+            preferred_layer = self._available_layers[0]
+        else:
+            preferred_layer = self._lastLayer()
+
+        if preferred_layer is not None:
+            self.mapVlayersCb.setLayer(preferred_layer)
+            self._layer = preferred_layer
+            self.layerChanged.emit(self._layer)
+            self._storeLastLayer(preferred_layer)
+
+
+class IdentifyPopupDialog(QtWidgets.QDialog):
+    featureChanged = QtCore.pyqtSignal(int)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._records = []
+
+        self.setWindowTitle("Fabric Identify")
+        self.setWindowFlags(self.windowFlags() | Qt.Tool)
+        self.resize(520, 420)
+
+        self.titleLabel = QtWidgets.QLabel(self)
+        self.titleLabel.setWordWrap(True)
+
+        self.featureCombo = QtWidgets.QComboBox(self)
+        self.featureCombo.currentIndexChanged.connect(self._onFeatureChanged)
+
+        self.detailsBrowser = QtWidgets.QTextBrowser(self)
+        self.detailsBrowser.setOpenExternalLinks(False)
+
+        self.closeButton = QtWidgets.QPushButton("Close", self)
+        self.closeButton.clicked.connect(self.close)
+
+        combo_layout = QtWidgets.QHBoxLayout()
+        combo_layout.addWidget(QtWidgets.QLabel("Feature:", self))
+        combo_layout.addWidget(self.featureCombo, 1)
+
+        button_layout = QtWidgets.QHBoxLayout()
+        button_layout.addStretch(1)
+        button_layout.addWidget(self.closeButton)
+
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.addWidget(self.titleLabel)
+        layout.addLayout(combo_layout)
+        layout.addWidget(self.detailsBrowser, 1)
+        layout.addLayout(button_layout)
+
+    def set_records(self, title, records):
+        self._records = records or []
+        self.setWindowTitle(title)
+        self.titleLabel.setText(title)
+
+        self.featureCombo.blockSignals(True)
+        self.featureCombo.clear()
+
+        for index, record in enumerate(self._records, start=1):
+            label = record.get("label") or f"Feature {index}"
+            self.featureCombo.addItem(label)
+
+        self.featureCombo.blockSignals(False)
+        self.featureCombo.setVisible(len(self._records) > 1)
+
+        if self._records:
+            self.featureCombo.setCurrentIndex(0)
+            self._onFeatureChanged(0)
+        else:
+            self.detailsBrowser.clear()
+
+    def _onFeatureChanged(self, index):
+        if index < 0 or index >= len(self._records):
+            self.detailsBrowser.clear()
+            return
+
+        self.detailsBrowser.setHtml(self._records[index].get("html", ""))
+        self.featureChanged.emit(index)

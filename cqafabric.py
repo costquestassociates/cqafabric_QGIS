@@ -21,10 +21,10 @@
  *                                                                         *
  ***************************************************************************/
 """
-from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication, Qt
-from qgis.PyQt.QtGui import QIcon, QColor
+from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication, Qt, QPoint
+from qgis.PyQt.QtGui import QIcon, QColor, QCursor
 from qgis.PyQt.QtWidgets import QAction, QToolButton, QMenu
-from PyQt5.QtWidgets import QMessageBox, QScrollArea, QVBoxLayout, QLabel, QWidget, QPushButton, QLineEdit, QApplication
+from PyQt5.QtWidgets import QMessageBox, QVBoxLayout, QLabel, QWidget, QPushButton, QLineEdit, QApplication
 from PyQt5.QtGui import QStandardItemModel, QStandardItem
 from qgis.core import QgsProject, QgsVectorLayer, Qgis, QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsSelectionContext, QgsFeature, QgsPointXY, QgsGeometry, QgsSettings, QgsMapLayer, QgsJsonExporter, QgsTask, QgsApplication, QgsFeatureRequest
 import processing
@@ -36,12 +36,11 @@ from .resources import *
 from .cqafabric_dialog import CQAFabricDialog
 from .addfabrictiles_dialog import AddFabricTilesDialog
 from .retrievedata_dialog import RetrieveDataDialog
-from .identifydata_dialog import IdentifyDataDialog
+from .identifydata_dialog import IdentifyDataDialog, IdentifyPopupDialog
 from .locatefabric_dialog import LocateFabricDialog
 import os.path
 import json
 import csv
-from qgis.PyQt.QtWidgets import QMessageBox
 import datetime
 import time
 import functools
@@ -51,6 +50,17 @@ baseuri = "https://api.costquest.com/"
 collect_calls = 0
 divide_calls = 0
 ids = []
+apikey = ""
+apikey_file = ""
+temp_dir = ""
+qgis_dir = ""
+vector_tile_layer = None
+define_layer_name = ""
+selected_layer = ""
+selected_vintage = ""
+combined_data_values = []
+csv_filepath = None
+output_file = None
 
 class CQAFabric:
     """QGIS Plugin Implementation."""
@@ -60,6 +70,14 @@ class CQAFabric:
 
         self.actions = []
         self.menu = None
+        self.toolbar = None
+        self.dlg = None
+        self.dlg1 = None
+        self.pointTool = None
+        self.vertex_marker = None
+        self.identify_popup = None
+        self.identify_highlights = []
+        self.identify_records = []
 
         # initialize plugin directory
         self.plugin_dir = os.path.dirname(__file__)
@@ -93,6 +111,357 @@ class CQAFabric:
         """
         # noinspection PyTypeChecker,PyArgumentList,PyCallByClass
         return QCoreApplication.translate('CQAFabric', message)
+
+    def _get_profile_paths(self):
+        """Return the active QGIS profile paths used by the plugin."""
+        profile_dir = os.path.normpath(QgsApplication.qgisSettingsDirPath())
+        temp_path = os.path.join(profile_dir, "Temp")
+        config_path = os.path.join(profile_dir, "QGIS_CQAFabric.config")
+        return profile_dir, temp_path, config_path
+
+    def _reset_retrieve_result_state(self):
+        global vector_tile_layer
+        global define_layer_name
+        global selected_layer
+        global selected_vintage
+        global combined_data_values
+        global output_file
+
+        vector_tile_layer = None
+        define_layer_name = ""
+        selected_layer = ""
+        selected_vintage = ""
+        combined_data_values = []
+        output_file = None
+
+    def _reset_locate_result_state(self):
+        global selected_vintage
+        global combined_data_values
+        global csv_filepath
+
+        selected_vintage = ""
+        combined_data_values = []
+        csv_filepath = None
+
+    def _save_retrieve_result(self):
+        if vector_tile_layer is None or not define_layer_name or not selected_layer or not selected_vintage or not combined_data_values:
+            self.dlg.infoBox.setText("Populate results before exporting geometry.")
+            self.dlg.infoBox.setStyleSheet("color: red;")
+            QApplication.processEvents()
+            return
+
+        self.load_geometry_result(
+            vector_tile_layer,
+            define_layer_name,
+            selected_layer,
+            selected_vintage,
+            combined_data_values,
+        )
+
+    def _save_locate_result(self):
+        if not csv_filepath or not selected_vintage or not combined_data_values:
+            self.dlg.infoBox.setText("Run a locate search with a CSV file before exporting results.")
+            self.dlg.infoBox.setStyleSheet("color: red;")
+            QApplication.processEvents()
+            return
+
+        self.load_csv_result("locations", selected_vintage, combined_data_values, csv_filepath)
+
+    def _clear_identify_marker(self):
+        if self.vertex_marker:
+            self.iface.mapCanvas().scene().removeItem(self.vertex_marker)
+            self.vertex_marker = None
+
+    def _clear_identify_highlights(self):
+        for highlight in self.identify_highlights:
+            if highlight:
+                highlight.hide()
+                self.iface.mapCanvas().scene().removeItem(highlight)
+        self.identify_highlights = []
+
+    def _clear_identify_visuals(self):
+        self._clear_identify_marker()
+        self._clear_identify_highlights()
+
+    def _transform_point(self, point, source_crs, dest_crs):
+        if point is None:
+            return None
+        if source_crs == dest_crs:
+            return QgsPointXY(point)
+
+        geometry = QgsGeometry.fromPointXY(QgsPointXY(point))
+        transform = QgsCoordinateTransform(source_crs, dest_crs, QgsProject.instance())
+        geometry.transform(transform)
+        return geometry.asPoint()
+
+    def _close_identify_popup(self):
+        if self.identify_popup is not None:
+            popup = self.identify_popup
+            self.identify_popup = None
+            self.identify_records = []
+            popup.close()
+            popup.deleteLater()
+
+    def _ensure_identify_popup(self):
+        if self.identify_popup is None:
+            self.identify_popup = IdentifyPopupDialog(self.iface.mainWindow())
+            self.identify_popup.destroyed.connect(self._on_identify_popup_destroyed)
+            self.identify_popup.finished.connect(lambda _result: self._clear_identify_visuals())
+            self.identify_popup.featureChanged.connect(self._on_identify_popup_feature_changed)
+        return self.identify_popup
+
+    def _on_identify_popup_destroyed(self):
+        self.identify_popup = None
+        self.identify_records = []
+
+    def _on_identify_popup_feature_changed(self, index):
+        self._activate_identify_record(index)
+
+    def _activate_identify_record(self, index):
+        self._clear_identify_visuals()
+        if index < 0 or index >= len(self.identify_records):
+            return
+
+        record = self.identify_records[index]
+        visual_type = record.get("visual_type")
+        record_layer = record.get("layer")
+
+        if record_layer is not None:
+            self.iface.setActiveLayer(record_layer)
+            node = self.iface.layerTreeView().layerTreeModel().rootGroup().findLayer(record_layer.id())
+            if node is not None:
+                node.setItemVisibilityChecked(True)
+
+        if visual_type == "point":
+            point = record.get("point")
+            if point is None:
+                return
+            point_crs = record.get("point_crs") or QgsProject.instance().crs()
+            canvas_crs = self.iface.mapCanvas().mapSettings().destinationCrs()
+            point = self._transform_point(point, point_crs, canvas_crs)
+            if point is None:
+                return
+            self.vertex_marker = QgsVertexMarker(self.iface.mapCanvas())
+            self.vertex_marker.setCenter(point)
+            self.vertex_marker.setColor(QColor(255, 0, 0))
+            self.vertex_marker.setFillColor(QColor(255, 255, 0))
+            self.vertex_marker.setIconSize(14)
+            self.vertex_marker.setIconType(QgsVertexMarker.ICON_CIRCLE)
+            self.vertex_marker.setPenWidth(3)
+            return
+
+        if visual_type == "geometry":
+            geometry = record.get("geometry")
+            layer = record.get("layer")
+            if geometry is None or layer is None:
+                return
+            highlight = QgsHighlight(self.iface.mapCanvas(), geometry, layer)
+            highlight.setColor(QColor(255, 0, 0))
+            highlight.setFillColor(QColor(255, 255, 0, 60))
+            highlight.setWidth(3)
+            highlight.show()
+            self.identify_highlights.append(highlight)
+
+    def _format_identify_html(self, data, displayname_dict):
+        if not isinstance(displayname_dict, dict):
+            displayname_dict = {}
+
+        ordered_keys = list(displayname_dict.keys())
+        ordered_keys.reverse()
+        headers = list(data.keys())
+        headers.sort(key=lambda key: ordered_keys.index(key) if key in ordered_keys else 9999)
+
+        html_rows = []
+        for key in headers:
+            value = data.get(key)
+            displayname = displayname_dict.get(key) or key
+            html_rows.append(
+                f"<tr><td style='border: 1px solid #cfcfcf; padding: 4px;'><b>{displayname}</b></td>"
+                f"<td style='border: 1px solid #cfcfcf; padding: 4px;'>{value}</td></tr>"
+            )
+
+        return (
+            "<html><body>"
+            "<table style='border-collapse: collapse; width: 100%;'>"
+            f"{''.join(html_rows)}"
+            "</table>"
+            "</body></html>"
+        )
+
+    def _feature_attributes_dict(self, feature):
+        try:
+            fields = feature.fields()
+            if fields:
+                return {
+                    field.name(): feature[field.name()]
+                    for field in fields
+                }
+        except Exception:
+            pass
+
+        attributes = feature.attributes() if hasattr(feature, "attributes") else []
+        return {f"field_{index}": value for index, value in enumerate(attributes)}
+
+    def _feature_uuid(self, feature, attributes):
+        for candidate in ("uuid", "UUID", "Uuid", "id", "ID"):
+            value = attributes.get(candidate)
+            if value:
+                return value
+
+        feature_attributes = feature.attributes() if hasattr(feature, "attributes") else []
+        return feature_attributes[0] if feature_attributes else None
+
+    def _identify_locations_point_layer(self, layer, point, selected_vintage, selected_layer, displayname_dict):
+        geom = QgsGeometry.fromPointXY(QgsPointXY(point.x(), point.y()))
+        geom.transform(QgsCoordinateTransform(QgsProject.instance().crs(), QgsCoordinateReferenceSystem("EPSG:4326"), QgsProject.instance()))
+        coordinates_data = [{
+            "latitude": geom.asPoint().y(),
+            "longitude": geom.asPoint().x(),
+            "sourcekey": 1
+        }]
+        data_1 = locatefabric(apikey, selected_vintage, coordinates_data)
+        if not data_1:
+            self._close_identify_popup()
+            self.iface.messageBar().pushMessage("Info", "No features found at the clicked location.", level=Qgis.Info)
+            return False
+
+        data_1.sort(key=lambda item: item.get('distancem') if item.get('distancem') is not None else float("inf"))
+        first_match = data_1[0]
+        if not first_match.get('location_id'):
+            self._close_identify_popup()
+            self.iface.messageBar().pushMessage("Info", "No features found at the clicked location.", level=Qgis.Info)
+            return False
+
+        self.vertex_marker = QgsVertexMarker(self.iface.mapCanvas())
+        self.vertex_marker.setCenter(QgsPointXY(first_match['longitude'], first_match['latitude']))
+        self.vertex_marker.setColor(QColor(255, 0, 0))
+        self.vertex_marker.setIconSize(10)
+        self.vertex_marker.setIconType(QgsVertexMarker.ICON_CIRCLE)
+        self.vertex_marker.setPenWidth(3)
+
+        locationid_key = [first_match['location_id']]
+        data_2 = translatefabric(apikey, selected_vintage, locationid_key, None, None)
+        ids = [item['uuid'] for item in data_2 if isinstance(item, dict) and item.get('uuid')]
+        records = []
+
+        for uuid in ids:
+            data = individualdata(selected_vintage, selected_layer, apikey, uuid)
+            if not isinstance(data, dict):
+                continue
+            label = str(data.get("location_id") or data.get("uuid") or uuid)
+            records.append({
+                "label": label,
+                "html": self._format_identify_html(data, displayname_dict),
+                "visual_type": "point",
+                "point": QgsPointXY(first_match['longitude'], first_match['latitude']),
+                "point_crs": QgsCoordinateReferenceSystem("EPSG:4326"),
+                "layer": layer,
+            })
+
+        if not records:
+            self._close_identify_popup()
+            self.iface.messageBar().pushMessage("Info", "No features found at the clicked location.", level=Qgis.Info)
+            self._clear_identify_visuals()
+            return False
+
+        self._show_identify_popup(f"Fabric {selected_layer} - {selected_vintage}", records)
+        return True
+
+    def _identify_other_point_layer(self, layer, point, selected_vintage, selected_layer, displayname_dict):
+        pt_geom = QgsGeometry.fromPointXY(QgsPointXY(point.x(), point.y()))
+        xform = QgsCoordinateTransform(QgsProject.instance().crs(), layer.crs(), QgsProject.instance())
+        pt_geom.transform(xform)
+        tolerance = max(self.iface.mapCanvas().mapUnitsPerPixel() * 8, 1.0)
+        if QgsProject.instance().crs() != layer.crs():
+            source_point = QgsGeometry.fromPointXY(QgsPointXY(point.x(), point.y()))
+            source_buffer = source_point.buffer(tolerance, 24)
+            source_buffer.transform(xform)
+            bb_geom = QgsGeometry().fromRect(source_buffer.boundingBox())
+        else:
+            bb_geom = QgsGeometry().fromRect(pt_geom.buffer(tolerance, 24).boundingBox())
+
+        context = QgsSelectionContext()
+        context.setScale(self.iface.mapCanvas().scale())
+
+        layer.selectByGeometry(bb_geom, context)
+        matched_features = []
+
+        for feature in layer.selectedFeatures():
+            attributes = self._feature_attributes_dict(feature)
+            feature_uuid = self._feature_uuid(feature, attributes)
+
+            feature_point = None
+            feature_geometry = feature.geometry()
+            if feature_geometry and not feature_geometry.isEmpty():
+                try:
+                    feature_point = feature_geometry.asPoint()
+                except Exception:
+                    try:
+                        feature_point = feature_geometry.centroid().asPoint()
+                    except Exception:
+                        feature_point = None
+
+            matched_features.append({
+                "uuid": feature_uuid,
+                "point": QgsPointXY(feature_point) if feature_point is not None else None,
+                "attributes": attributes,
+            })
+
+        layer.removeSelection()
+
+        if not matched_features:
+            self._close_identify_popup()
+            self.iface.messageBar().pushMessage("Info", "No features found at the clicked location.", level=Qgis.Info)
+            return False
+
+        records = []
+        for matched_feature in matched_features:
+            uuid = matched_feature["uuid"]
+            data = individualdata(selected_vintage, selected_layer, apikey, uuid) if uuid else None
+            if not isinstance(data, dict) or not data:
+                data = matched_feature["attributes"]
+            if not isinstance(data, dict) or not data:
+                continue
+
+            label = str(
+                data.get("uuid")
+                or data.get("retirement_id")
+                or data.get("location_id")
+                or uuid
+                or "Feature"
+            )
+            records.append({
+                "label": label,
+                "html": self._format_identify_html(data, displayname_dict),
+                "visual_type": "point",
+                "point": matched_feature["point"] or QgsPointXY(point.x(), point.y()),
+                "point_crs": layer.crs(),
+                "layer": layer,
+            })
+
+        if not records:
+            self._close_identify_popup()
+            self.iface.messageBar().pushMessage("Info", "No feature details were returned for the clicked point.", level=Qgis.Info)
+            self._clear_identify_visuals()
+            return False
+
+        self._show_identify_popup(f"Fabric {selected_layer} - {selected_vintage}", records)
+        return True
+
+    def _show_identify_popup(self, title, records):
+        self.identify_records = records or []
+        popup = self._ensure_identify_popup()
+        popup.set_records(title, self.identify_records)
+        cursor_pos = QCursor.pos()
+        popup.move(cursor_pos + QPoint(18, 18))
+        popup.show()
+        popup.raise_()
+        popup.activateWindow()
+
+    def _close_active_dialog(self):
+        if getattr(self, "dlg", None) is not None:
+            self.dlg.close()
+            self.dlg = None
 
 
     def add_action(
@@ -254,17 +623,12 @@ class CQAFabric:
         layout.addWidget(self.auth_dialog.lineEdit_api_key)
         layout.addWidget(self.auth_dialog.button_save)
         self.auth_dialog.setLayout(layout)
-        # Get the current windows user name
-        user_name = os.getlogin()
         # Check whether the API file already exists 
         global apikey_file
         global temp_dir
         global qgis_dir
-        qgis_dir = os.path.join(r"C:\Users",user_name, r'AppData\Roaming\QGIS')
-        temp_dir =  os.path.join(r"C:\Users",user_name, r'AppData\Roaming\QGIS\Temp')
-        if not os.path.exists(temp_dir):
-            os.makedirs(temp_dir)
-        apikey_file = os.path.join(qgis_dir, 'QGIS_CQAFabric.config')
+        qgis_dir, temp_dir, apikey_file = self._get_profile_paths()
+        os.makedirs(temp_dir, exist_ok=True)
 
         # Create action for validating the API key showing the text in the tool button
         icon_path_3 = ':/plugins/cqafabric/icons/icon3.png'
@@ -328,8 +692,7 @@ class CQAFabric:
         self.disable_all_actions()
         self.actionValidateAPIKey.setText(self.tr("Log In"))
         # if there is self.dlg, close it
-        if hasattr(self, 'dlg') and self.dlg is not None:
-            self.dlg.close()
+        self._close_active_dialog()
         self.auth_dialog.show()
         
                 
@@ -338,6 +701,9 @@ class CQAFabric:
         if not self.menu:
             # The initGui() method was never called
             return
+        self._close_identify_popup()
+        self._clear_identify_visuals()
+        self._close_active_dialog()
         self.iface.pluginMenu().removeAction(self.menu.menuAction())
         self.toolButton.deleteLater()
 
@@ -380,6 +746,7 @@ class CQAFabric:
     def RetrieveData(self):
         self.disable_all_actions()
         self.actionValidateAPIKey.setEnabled(False)
+        self._reset_retrieve_result_state()
  
 
         global ids
@@ -393,6 +760,8 @@ class CQAFabric:
         self.dlg = RetrieveDataDialog()
         self.dlg.setWindowFlags(Qt.WindowMinimizeButtonHint | Qt.WindowCloseButtonHint)
         self.dlg.setFixedSize(self.dlg.size())
+        self.dlg.saveBtn.setEnabled(False)
+        self.dlg.saveBtn.setStyleSheet("color: gray;")
 
         # Get the vintages from the API
         layer_list = load_vintages(apikey)
@@ -413,11 +782,11 @@ class CQAFabric:
         for task in self.task_manager.tasks():
             task.cancel()
         # if populatetableBtn is clicked, show the table with the selected features
-        self.dlg.saveBtn.clicked.connect(lambda: self.load_geometry_result(vector_tile_layer,define_layer_name,selected_layer,selected_vintage,combined_data_values))
+        self.dlg.saveBtn.clicked.connect(self._save_retrieve_result)
 
-        self.dlg.populatetableBtn.clicked.connect(lambda: self.populate_table_result())
+        self.dlg.populatetableBtn.clicked.connect(self.populate_table_result)
 
-        self.dlg.summarizetableBtn.clicked.connect(lambda: self.summarize_table_result())
+        self.dlg.summarizetableBtn.clicked.connect(self.summarize_table_result)
                 
         def handle_dialog_finished(result):
             self.task_manager = QgsApplication.taskManager()
@@ -439,12 +808,14 @@ class CQAFabric:
                 if reply == QMessageBox.Yes:
                     for task in running_tasks:
                         task.cancel()
+                    self._reset_retrieve_result_state()
                     self.enable_all_actions()
                 else:
                     # Reopen the dialog if user cancels closing
                     self.dlg.show()
                     return
             else:
+                self._reset_retrieve_result_state()
                 self.enable_all_actions()
         self.dlg.finished.connect(handle_dialog_finished)
 
@@ -531,6 +902,11 @@ class CQAFabric:
             
     def load_csv_result(self,selected_layer,selected_vintage,combined_data_values,csv_filepath):
             self.dlg.progressBar.resetFormat()
+            if not csv_filepath or not combined_data_values:
+                self.dlg.infoBox.setText("Locate results are not ready to export yet.")
+                self.dlg.infoBox.setStyleSheet("color: red;")
+                QApplication.processEvents()
+                return
             # get csv file path without extension
             csv_filepath_without_extension = os.path.splitext(csv_filepath)[0]       
             DateStamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
@@ -979,225 +1355,124 @@ class CQAFabric:
         canvas.setMapTool(self.pointTool)
 
 
-        self.dlg.finished.connect(lambda: (
-            self.enable_all_actions(),
-            self.iface.mapCanvas().setMapTool(QgsMapToolEmitPoint(self.iface.mapCanvas()))
-        ))
+        self.dlg.finished.connect(self._on_identify_dialog_finished)
 
         
+    def _on_identify_dialog_finished(self):
+        self._close_identify_popup()
+        self._clear_identify_visuals()
+        self.enable_all_actions()
+        if self.pointTool is not None:
+            self.iface.mapCanvas().unsetMapTool(self.pointTool)
+            self.pointTool = None
+
+    def _on_locate_dialog_finished(self):
+        self._reset_locate_result_state()
+        self.enable_all_actions()
 
 
-
-    class ScrollMessageBox(QMessageBox):
-        def __init__(self, content_list, *args, **kwargs):
-            super().__init__(*args, **kwargs)
-            scroll = QScrollArea(self)
-            scroll.setWidgetResizable(True)
-            self.content = QWidget()
-            scroll.setWidget(self.content)
-            layout = QVBoxLayout(self.content)
-            for item in content_list:
-                label = QLabel(item, self)
-                label.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard)
-                layout.addWidget(label)
-            self.layout().addWidget(scroll, 0, 0, 1, self.layout().columnCount())
-            self.setStyleSheet("QScrollArea{min-width:650px; min-height:400px}")
 
 
     def display_point(self,point: QgsPointXY):
-        layer = self.iface.activeLayer()
-        global highlight
-        highlight = None
-        # Inside your class, add a new attribute to store the vertex marker
-        self.vertex_marker = None
-        
+        layer = None
+        if getattr(self, "dlg", None) is not None and hasattr(self.dlg, "mapVlayersCb"):
+            layer = self.dlg.mapVlayersCb.currentLayer()
+        if layer is None:
+            layer = self.iface.activeLayer()
+
+        self._clear_identify_visuals()
+
         try:
+            if layer is None:
+                raise ValueError("No active layer is selected.")
 
             uri = layer.dataProvider().dataSourceUri()
+            if "url=" not in uri or "fabric/" not in uri or "tiles/" not in uri:
+                raise ValueError("Active layer is not a Fabric vector tile layer.")
+
             # get the url of uri
             url = uri.split("url=")[1].split("&")[0]
             selected_vintage = url.split("fabric/")[1].split("/")[0]
             selected_layer = url.split("tiles/")[1].split("/")[0]
             geom = QgsGeometry.fromPointXY(QgsPointXY(point.x(), point.y()))
+            displayname_dict = getfieldsdisplayname(selected_vintage, selected_layer, apikey)
 
             if selected_layer == "locations":
-            
-                # Set up highlight variable
-
-                """Handle the point emitted by the map tool."""
-                # Clean the highlighted features
-                # Remove all highlights from the map canvas
-                #coords = "{}, {}".format(point.x(), point.y())
-                #self.dlg.lineEdit.setText(str(coords))
-
-                # covert point x and y to WGS84 latitude and longitude
-                geom.transform(QgsCoordinateTransform(QgsProject.instance().crs(), QgsCoordinateReferenceSystem("EPSG:4326"), QgsProject.instance()))
-                # Get latitude and longitude from the point geometry
-                coordinates_data = data = [{
-                                    "latitude": geom.asPoint().y(),
-                                    "longitude": geom.asPoint().x(),
-                                    "sourcekey": 1
-                                    }]
-                data_1 = locatefabric(apikey, selected_vintage, coordinates_data)
-                # sort data_1 by distancem
-                data_1.sort(key=lambda x: x['distancem'])
-
-                # In the display_point method, replace the existing code for showing a point symbol with this:
-
-
-                if data_1[0]['location_id']:
-                    locationid_key = [data_1[0]['location_id']]
-                    data_2 = translatefabric(apikey, selected_vintage, locationid_key, None, None)
-                    ids = [item['uuid']for item in data_2]
-
-                    # show a point symbol at the clicked location
-                    if self.vertex_marker:
-                        self.iface.mapCanvas().scene().removeItem(self.vertex_marker)
-                        self.vertex_marker = None
-
-                    # Create a new vertex marker
-                    self.vertex_marker = QgsVertexMarker(self.iface.mapCanvas())
-
-                    self.vertex_marker.setCenter(QgsPointXY(data_1[0]['longitude'], data_1[0]['latitude']))
-                    self.vertex_marker.setColor(QColor(255, 0, 0))
-                    self.vertex_marker.setIconSize(10)
-                    self.vertex_marker.setIconType(QgsVertexMarker.ICON_CIRCLE)
-                    self.vertex_marker.setPenWidth(3)
-
-                
-                # Display the data in a scrollable message box
-                    displayname_dict = getfieldsdisplayname(selected_vintage,selected_layer,apikey)
-                    ordered_keys = list(displayname_dict.keys())
-                    ordered_keys.reverse()
-                    for uuid in ids:
-                        data = individualdata(selected_vintage, selected_layer, apikey, uuid)
-                        # Format the data as a list of strings for the scrollable message box
-                        #displayname = [item.get('displayname') for item in data if isinstance(item, dict) and item.get('fieldname') == key][0]
-                        content_Dict ={}
-                        headers= list(data.keys())
-                        headers.sort(key=lambda x: ordered_keys.index(x) if x in ordered_keys else 9999)
-                        html_rows =''
-                        for key in headers:
-                            value = data.get(key)
-                            displayname = displayname_dict.get(key) if displayname_dict.get(key) else key
-                            html_rows = html_rows + f"<tr><td style='border: 1px solid black;'><b>{displayname}</b></td><td style='border: 1px solid black;'>{value}</td></tr>"
-                    
-                        # Create the complete HTML content for the message box
-                        html_content = f"""
-                        <html>
-                            <body>
-                                <table style='border-collapse: collapse; width: 100%; border: 1px solid black;'>
-                                    {html_rows}
-                                </table>
-                            </body>
-                        </html>
-                        """
-                        result = self.ScrollMessageBox([html_content])
-                        result.setWindowTitle(f"Fabric {selected_layer} - {selected_vintage}")
-                        result.exec_()
-                        # Clear the highlight after closing the message box
-                        if self.vertex_marker:
-                            self.iface.mapCanvas().scene().removeItem(self.vertex_marker)
-                            self.vertex_marker = None
-
-                else:
-                    self.iface.messageBar().pushMessage("Info", "No features found at the clicked location.", level=Qgis.Info)
+                return self._identify_locations_point_layer(
+                    layer, point, selected_vintage, selected_layer, displayname_dict
+                )
+            elif is_point_fabric_layer(selected_layer):
+                return self._identify_other_point_layer(
+                    layer, point, selected_vintage, selected_layer, displayname_dict
+                )
             else:
                 pt_geom = QgsGeometry().fromWkt(geom.asWkt())
 
                 xform = QgsCoordinateTransform(QgsProject.instance().crs(), layer.crs(), QgsProject.instance())
                 pt_geom.transform(xform)
 
-                
-                if selected_layer == "locations":
-                    bb_geom = QgsGeometry().fromRect(pt_geom.buffer(5, 50).boundingBox())
-                else:
-                    bb_geom = QgsGeometry().fromRect(pt_geom.buffer(0.001, 50).boundingBox())
-
-                # Add the bb_geom to the map canvas as temporary layer
-                # Create a new memory layer for the bounding box
-                
-
+                bb_geom = QgsGeometry().fromRect(pt_geom.buffer(0.001, 50).boundingBox())
 
                 context = QgsSelectionContext()
                 context.setScale(self.iface.mapCanvas().scale())
 
                 layer.selectByGeometry(bb_geom, context)
-                ids = []
-                highlight = None
-                # Get the selected features
+                matched_features = []
+
                 for feature in layer.selectedFeatures():
-                    tilegeom=feature.geometry()
-                    # Highlight the feature on the map canvas
-                    highlight = QgsHighlight(self.iface.mapCanvas(), tilegeom, layer)
-                    highlight.setColor(QColor("red"))
-                    highlight.show()
-                    uuid = feature.attributes()[0]
-                    ids.append(uuid)
-                
-                # Display the data in a scrollable message box
-                if ids:
-                    displayname_dict = getfieldsdisplayname(selected_vintage,selected_layer,apikey)
-                    ordered_keys = list(displayname_dict.keys())
-                    ordered_keys.reverse()
-                    for uuid in ids:
+                    matched_features.append({
+                        "uuid": feature.attributes()[0],
+                        "geometry": QgsGeometry(feature.geometry()),
+                    })
+
+                layer.removeSelection()
+
+                if matched_features:
+                    records = []
+                    for matched_feature in matched_features:
+                        uuid = matched_feature["uuid"]
                         data = individualdata(selected_vintage, selected_layer, apikey, uuid)
-                        # Format the data as a list of strings for the scrollable message box
-                        #displayname = [item.get('displayname') for item in data if isinstance(item, dict) and item.get('fieldname') == key][0]
-                        content_Dict ={}
-                        headers= list(data.keys())
-                        headers.sort(key=lambda x: ordered_keys.index(x) if x in ordered_keys else 9999)
-                        html_rows =''
-                        for key in headers:
-                            value = data.get(key)
-                            displayname = displayname_dict.get(key) if displayname_dict.get(key) else key
-                            html_rows = html_rows + f"<tr><td style='border: 1px solid black;'><b>{displayname}</b></td><td style='border: 1px solid black;'>{value}</td></tr>"
-                    
-                        # Create the complete HTML content for the message box
-                        html_content = f"""
-                        <html>
-                            <body>
-                                <table style='border-collapse: collapse; width: 100%; border: 1px solid black;'>
-                                    {html_rows}
-                                </table>
-                            </body>
-                        </html>
-                        """
-                        result = self.ScrollMessageBox([html_content])
-                        result.setWindowTitle(f"Fabric {selected_layer} - {selected_vintage}")
-                        result.exec_()
-                        # Clear the highlight after closing the message box
-                        if highlight:
-                            highlight.hide()
-                            self.iface.mapCanvas().scene().removeItem(highlight)
-                            highlight = None
-                        # remove layer selection
-                        layer.removeSelection()
+                        if not isinstance(data, dict):
+                            continue
+                        label = str(data.get("uuid") or uuid)
+                        records.append({
+                            "label": label,
+                            "html": self._format_identify_html(data, displayname_dict),
+                            "visual_type": "geometry",
+                            "geometry": matched_feature["geometry"],
+                            "layer": layer,
+                        })
 
+                    if records:
+                        self._show_identify_popup(f"Fabric {selected_layer} - {selected_vintage}", records)
+                    else:
+                        self._close_identify_popup()
+                        self.iface.messageBar().pushMessage("Info", "No feature details were returned for the clicked tile.", level=Qgis.Info)
+                        self._clear_identify_visuals()
+                        return False
                 else:
+                    self._close_identify_popup()
                     self.iface.messageBar().pushMessage("Info", "No features found at the clicked location.", level=Qgis.Info)
-                        
-                    
-        except:
-            if self.vertex_marker:
-                self.iface.mapCanvas().scene().removeItem(self.vertex_marker)
-                self.vertex_marker = None
-            
-            if highlight:
-                highlight.hide()
-                self.iface.mapCanvas().scene().removeItem(highlight)
-                highlight = None
+                    return False
 
-            self.iface.messageBar().pushMessage("Info", "Please activate a fabric vector tile layer in Layers Panel", level=Qgis.Info)
-            return False            
+            return True
+
+        except Exception as exception:
+            self._close_identify_popup()
+            self._clear_identify_visuals()
+            self.iface.messageBar().pushMessage("Info", f"Identify failed for the selected Fabric layer: {exception}", level=Qgis.Warning)
+            return False
 
 
     def LocateFabric(self):
         self.disable_all_actions()
         self.actionValidateAPIKey.setEnabled(False)
+        self._reset_locate_result_state()
         self.dlg1 = LocateFabricDialog()
         self.dlg = self.dlg1
         self.dlg.setFixedSize(self.dlg.size())
+        self.dlg.saveBtn.setEnabled(False)
+        self.dlg.saveBtn.setStyleSheet("color: gray;")
 
         # Get the vintages from the API
         vintages=load_vintages(apikey)
@@ -1208,10 +1483,10 @@ class CQAFabric:
         self.dlg.show()
 
         # if populatetableBtn is clicked, show the table with the selected features
-        self.dlg.showBtn.clicked.connect(lambda: self.show_geocode_fabric())
-        self.dlg.saveBtn.clicked.connect(lambda: self.load_csv_result('locations',selected_vintage,combined_data_values,csv_filepath))
+        self.dlg.showBtn.clicked.connect(self.show_geocode_fabric)
+        self.dlg.saveBtn.clicked.connect(self._save_locate_result)
         # when dlg is closed, uncheck the action
-        self.dlg.finished.connect(self.enable_all_actions)
+        self.dlg.finished.connect(self._on_locate_dialog_finished)
 
     def show_geocode_fabric(self):
         global selected_vintage
@@ -1328,6 +1603,14 @@ class CQAFabric:
         
         
             data_1 = locatefabric(apikey, selected_vintage, coordinates_data)
+        if not data_1:
+            self.dlg.saveBtn.setEnabled(False)
+            self.dlg.saveBtn.setStyleSheet("color: gray;")
+            self.dlg.infoBox.setText("No fabric records were returned for the current input.")
+            self.dlg.infoBox.setStyleSheet("color: red;")
+            QApplication.processEvents()
+            return
+
         if data_1:
             if self.dlg.checkBox_attribute.isChecked():
                 self.dlg.infoBox.setText("Locate fabrics completed successfully, starting to attach attributes...")
