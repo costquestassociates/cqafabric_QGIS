@@ -183,6 +183,17 @@ class CQAFabric:
         self._clear_identify_marker()
         self._clear_identify_highlights()
 
+    def _transform_point(self, point, source_crs, dest_crs):
+        if point is None:
+            return None
+        if source_crs == dest_crs:
+            return QgsPointXY(point)
+
+        geometry = QgsGeometry.fromPointXY(QgsPointXY(point))
+        transform = QgsCoordinateTransform(source_crs, dest_crs, QgsProject.instance())
+        geometry.transform(transform)
+        return geometry.asPoint()
+
     def _close_identify_popup(self):
         if self.identify_popup is not None:
             popup = self.identify_popup
@@ -216,6 +227,11 @@ class CQAFabric:
 
         if visual_type == "point":
             point = record.get("point")
+            if point is None:
+                return
+            point_crs = record.get("point_crs") or QgsProject.instance().crs()
+            canvas_crs = self.iface.mapCanvas().mapSettings().destinationCrs()
+            point = self._transform_point(point, point_crs, canvas_crs)
             if point is None:
                 return
             self.vertex_marker = QgsVertexMarker(self.iface.mapCanvas())
@@ -331,6 +347,7 @@ class CQAFabric:
                 "html": self._format_identify_html(data, displayname_dict),
                 "visual_type": "point",
                 "point": QgsPointXY(first_match['longitude'], first_match['latitude']),
+                "point_crs": QgsCoordinateReferenceSystem("EPSG:4326"),
             })
 
         if not records:
@@ -410,6 +427,7 @@ class CQAFabric:
                 "html": self._format_identify_html(data, displayname_dict),
                 "visual_type": "point",
                 "point": matched_feature["point"] or QgsPointXY(point.x(), point.y()),
+                "point_crs": layer.crs(),
             })
 
         if not records:
