@@ -22,7 +22,7 @@ baseuri = "https://api.costquest.com/"
 
 
 def is_point_fabric_layer(layer_name):
-    return layer_name in {"locations", "retirements"}
+    return layer_name in {"locations","retirements"}
 
 
 def get_or_create_apikey_authcfg(apikey):

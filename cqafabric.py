@@ -240,6 +240,9 @@ class CQAFabric:
             self.identify_highlights.append(highlight)
 
     def _format_identify_html(self, data, displayname_dict):
+        if not isinstance(displayname_dict, dict):
+            displayname_dict = {}
+
         ordered_keys = list(displayname_dict.keys())
         ordered_keys.reverse()
         headers = list(data.keys())
@@ -261,6 +264,162 @@ class CQAFabric:
             "</table>"
             "</body></html>"
         )
+
+    def _feature_attributes_dict(self, feature):
+        try:
+            fields = feature.fields()
+            if fields:
+                return {
+                    field.name(): feature[field.name()]
+                    for field in fields
+                }
+        except Exception:
+            pass
+
+        attributes = feature.attributes() if hasattr(feature, "attributes") else []
+        return {f"field_{index}": value for index, value in enumerate(attributes)}
+
+    def _feature_uuid(self, feature, attributes):
+        for candidate in ("uuid", "UUID", "Uuid", "id", "ID"):
+            value = attributes.get(candidate)
+            if value:
+                return value
+
+        feature_attributes = feature.attributes() if hasattr(feature, "attributes") else []
+        return feature_attributes[0] if feature_attributes else None
+
+    def _identify_locations_point_layer(self, point, selected_vintage, selected_layer, displayname_dict):
+        geom = QgsGeometry.fromPointXY(QgsPointXY(point.x(), point.y()))
+        geom.transform(QgsCoordinateTransform(QgsProject.instance().crs(), QgsCoordinateReferenceSystem("EPSG:4326"), QgsProject.instance()))
+        coordinates_data = [{
+            "latitude": geom.asPoint().y(),
+            "longitude": geom.asPoint().x(),
+            "sourcekey": 1
+        }]
+        data_1 = locatefabric(apikey, selected_vintage, coordinates_data)
+        if not data_1:
+            self._close_identify_popup()
+            self.iface.messageBar().pushMessage("Info", "No features found at the clicked location.", level=Qgis.Info)
+            return False
+
+        data_1.sort(key=lambda item: item.get('distancem') if item.get('distancem') is not None else float("inf"))
+        first_match = data_1[0]
+        if not first_match.get('location_id'):
+            self._close_identify_popup()
+            self.iface.messageBar().pushMessage("Info", "No features found at the clicked location.", level=Qgis.Info)
+            return False
+
+        self.vertex_marker = QgsVertexMarker(self.iface.mapCanvas())
+        self.vertex_marker.setCenter(QgsPointXY(first_match['longitude'], first_match['latitude']))
+        self.vertex_marker.setColor(QColor(255, 0, 0))
+        self.vertex_marker.setIconSize(10)
+        self.vertex_marker.setIconType(QgsVertexMarker.ICON_CIRCLE)
+        self.vertex_marker.setPenWidth(3)
+
+        locationid_key = [first_match['location_id']]
+        data_2 = translatefabric(apikey, selected_vintage, locationid_key, None, None)
+        ids = [item['uuid'] for item in data_2 if isinstance(item, dict) and item.get('uuid')]
+        records = []
+
+        for uuid in ids:
+            data = individualdata(selected_vintage, selected_layer, apikey, uuid)
+            if not isinstance(data, dict):
+                continue
+            label = str(data.get("location_id") or data.get("uuid") or uuid)
+            records.append({
+                "label": label,
+                "html": self._format_identify_html(data, displayname_dict),
+                "visual_type": "point",
+                "point": QgsPointXY(first_match['longitude'], first_match['latitude']),
+            })
+
+        if not records:
+            self._close_identify_popup()
+            self.iface.messageBar().pushMessage("Info", "No features found at the clicked location.", level=Qgis.Info)
+            self._clear_identify_visuals()
+            return False
+
+        self._show_identify_popup(f"Fabric {selected_layer} - {selected_vintage}", records)
+        return True
+
+    def _identify_other_point_layer(self, layer, point, selected_vintage, selected_layer, displayname_dict):
+        pt_geom = QgsGeometry.fromPointXY(QgsPointXY(point.x(), point.y()))
+        xform = QgsCoordinateTransform(QgsProject.instance().crs(), layer.crs(), QgsProject.instance())
+        pt_geom.transform(xform)
+        tolerance = max(self.iface.mapCanvas().mapUnitsPerPixel() * 8, 1.0)
+        if QgsProject.instance().crs() != layer.crs():
+            source_point = QgsGeometry.fromPointXY(QgsPointXY(point.x(), point.y()))
+            source_buffer = source_point.buffer(tolerance, 24)
+            source_buffer.transform(xform)
+            bb_geom = QgsGeometry().fromRect(source_buffer.boundingBox())
+        else:
+            bb_geom = QgsGeometry().fromRect(pt_geom.buffer(tolerance, 24).boundingBox())
+
+        context = QgsSelectionContext()
+        context.setScale(self.iface.mapCanvas().scale())
+
+        layer.selectByGeometry(bb_geom, context)
+        matched_features = []
+
+        for feature in layer.selectedFeatures():
+            attributes = self._feature_attributes_dict(feature)
+            feature_uuid = self._feature_uuid(feature, attributes)
+
+            feature_point = None
+            feature_geometry = feature.geometry()
+            if feature_geometry and not feature_geometry.isEmpty():
+                try:
+                    feature_point = feature_geometry.asPoint()
+                except Exception:
+                    try:
+                        feature_point = feature_geometry.centroid().asPoint()
+                    except Exception:
+                        feature_point = None
+
+            matched_features.append({
+                "uuid": feature_uuid,
+                "point": QgsPointXY(feature_point) if feature_point is not None else None,
+                "attributes": attributes,
+            })
+
+        layer.removeSelection()
+
+        if not matched_features:
+            self._close_identify_popup()
+            self.iface.messageBar().pushMessage("Info", "No features found at the clicked location.", level=Qgis.Info)
+            return False
+
+        records = []
+        for matched_feature in matched_features:
+            uuid = matched_feature["uuid"]
+            data = individualdata(selected_vintage, selected_layer, apikey, uuid) if uuid else None
+            if not isinstance(data, dict) or not data:
+                data = matched_feature["attributes"]
+            if not isinstance(data, dict) or not data:
+                continue
+
+            label = str(
+                data.get("uuid")
+                or data.get("retirement_id")
+                or data.get("location_id")
+                or uuid
+                or "Feature"
+            )
+            records.append({
+                "label": label,
+                "html": self._format_identify_html(data, displayname_dict),
+                "visual_type": "point",
+                "point": matched_feature["point"] or QgsPointXY(point.x(), point.y()),
+            })
+
+        if not records:
+            self._close_identify_popup()
+            self.iface.messageBar().pushMessage("Info", "No feature details were returned for the clicked point.", level=Qgis.Info)
+            self._clear_identify_visuals()
+            return False
+
+        self._show_identify_popup(f"Fabric {selected_layer} - {selected_vintage}", records)
+        return True
 
     def _show_identify_popup(self, title, records):
         self.identify_records = records or []
@@ -1211,58 +1370,14 @@ class CQAFabric:
             geom = QgsGeometry.fromPointXY(QgsPointXY(point.x(), point.y()))
             displayname_dict = getfieldsdisplayname(selected_vintage, selected_layer, apikey)
 
-            if is_point_fabric_layer(selected_layer):
-                geom.transform(QgsCoordinateTransform(QgsProject.instance().crs(), QgsCoordinateReferenceSystem("EPSG:4326"), QgsProject.instance()))
-                coordinates_data = [{
-                    "latitude": geom.asPoint().y(),
-                    "longitude": geom.asPoint().x(),
-                    "sourcekey": 1
-                }]
-                data_1 = locatefabric(apikey, selected_vintage, coordinates_data)
-                if not data_1:
-                    self._close_identify_popup()
-                    self.iface.messageBar().pushMessage("Info", "No features found at the clicked location.", level=Qgis.Info)
-                    return False
-
-                data_1.sort(key=lambda item: item.get('distancem') if item.get('distancem') is not None else float("inf"))
-                first_match = data_1[0]
-
-                if first_match.get('location_id'):
-                    self.vertex_marker = QgsVertexMarker(self.iface.mapCanvas())
-                    self.vertex_marker.setCenter(QgsPointXY(first_match['longitude'], first_match['latitude']))
-                    self.vertex_marker.setColor(QColor(255, 0, 0))
-                    self.vertex_marker.setIconSize(10)
-                    self.vertex_marker.setIconType(QgsVertexMarker.ICON_CIRCLE)
-                    self.vertex_marker.setPenWidth(3)
-
-                    locationid_key = [first_match['location_id']]
-                    data_2 = translatefabric(apikey, selected_vintage, locationid_key, None, None)
-                    ids = [item['uuid'] for item in data_2 if isinstance(item, dict) and item.get('uuid')]
-                    records = []
-
-                    for uuid in ids:
-                        data = individualdata(selected_vintage, selected_layer, apikey, uuid)
-                        if not isinstance(data, dict):
-                            continue
-                        label = str(data.get("location_id") or data.get("uuid") or uuid)
-                        records.append({
-                            "label": label,
-                            "html": self._format_identify_html(data, displayname_dict),
-                            "visual_type": "point",
-                            "point": QgsPointXY(first_match['longitude'], first_match['latitude']),
-                        })
-
-                    if records:
-                        self._show_identify_popup(f"Fabric {selected_layer} - {selected_vintage}", records)
-                    else:
-                        self._close_identify_popup()
-                        self.iface.messageBar().pushMessage("Info", "No features found at the clicked location.", level=Qgis.Info)
-                        self._clear_identify_visuals()
-                        return False
-                else:
-                    self._close_identify_popup()
-                    self.iface.messageBar().pushMessage("Info", "No features found at the clicked location.", level=Qgis.Info)
-                    return False
+            if selected_layer == "locations":
+                return self._identify_locations_point_layer(
+                    point, selected_vintage, selected_layer, displayname_dict
+                )
+            elif is_point_fabric_layer(selected_layer):
+                return self._identify_other_point_layer(
+                    layer, point, selected_vintage, selected_layer, displayname_dict
+                )
             else:
                 pt_geom = QgsGeometry().fromWkt(geom.asWkt())
 
@@ -1315,10 +1430,10 @@ class CQAFabric:
 
             return True
 
-        except Exception:
+        except Exception as exception:
             self._close_identify_popup()
             self._clear_identify_visuals()
-            self.iface.messageBar().pushMessage("Info", "Please activate a fabric vector tile layer in Layers Panel", level=Qgis.Info)
+            self.iface.messageBar().pushMessage("Info", f"Identify failed for the selected Fabric layer: {exception}", level=Qgis.Warning)
             return False
 
 
