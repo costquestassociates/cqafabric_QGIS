@@ -52,7 +52,7 @@ class LocateFabricDialog(QtWidgets.QDialog, FORM_CLASS):
     def _initConnections(self):
         self.checkBox_CSV.toggled.connect(self._onCSVChecked)
         self.AddrButton.toggled.connect(self._onBtnChecked)
-        self.AddrButton.toggled.connect(self._onBtnChecked)
+        self.CoorButton.toggled.connect(self._onBtnChecked)
     
     def _onCSVChecked(self):
         """

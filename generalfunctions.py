@@ -1,6 +1,7 @@
 import requests
 import json
 import urllib.request
+import urllib.parse
 import os
 import sys
 from PyQt5.QtCore import QUrl
@@ -18,6 +19,10 @@ from qgis.core import QgsApplication, QgsAuthMethodConfig, QgsDataSourceUri, Qgs
 
 
 baseuri = "https://api.costquest.com/"
+
+
+def is_point_fabric_layer(layer_name):
+    return layer_name in {"locations", "retirements"}
 
 
 def get_or_create_apikey_authcfg(apikey):
@@ -168,7 +173,7 @@ def load_fabricvectortilelayer(selected_vintage,selected_layer,apikey):
     uri.setParam("type", "xyz")  # Style URL
     uri.setParam("url", vector_tile_url)  # Base URL with placeholders
     uri.setParam("zmax", "14")  # Maximum zoom level
-    if selected_layer == "locations":
+    if is_point_fabric_layer(selected_layer):
         uri.setParam("zmin", "0")  # Minimum zoom level
     else:
         uri.setParam("zmin", "12")
@@ -189,7 +194,7 @@ def load_fabricvectortilelayer(selected_vintage,selected_layer,apikey):
     
     # Set scale dependent visibility
     vector_tile_layer.setScaleBasedVisibility(True)
-    if selected_layer == "locations":
+    if is_point_fabric_layer(selected_layer):
         # Visible from all scales
         vector_tile_layer.setMinimumScale(0)
         vector_tile_layer.setMaximumScale(0)  # 1:20,000
@@ -415,7 +420,11 @@ def locatefabric(apikey, vintage, sourcedata):
         try:
             result = []
             for dic in sourcedata:
-                url = f"https://api.costquest.com/fabricext/{vintage}/locate?latitude={dic["latitude"]}&longitude={dic["longitude"]}"
+                query = urllib.parse.urlencode({
+                    "latitude": dic["latitude"],
+                    "longitude": dic["longitude"],
+                })
+                url = f"https://api.costquest.com/fabricext/{vintage}/locate?{query}"
                 req = urllib.request.Request(url, headers=hdr)
 
                 req.get_method = lambda: 'GET'

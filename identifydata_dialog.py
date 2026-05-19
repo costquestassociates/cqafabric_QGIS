@@ -26,6 +26,7 @@ import os
 
 from qgis.PyQt import uic, QtCore
 from qgis.PyQt import QtWidgets
+from qgis.PyQt.QtCore import Qt
 from qgis.core import QgsMapLayerProxyModel, QgsVectorLayer, QgsProject, QgsMapLayer, QgsVectorTileLayer
 from qgis.gui import QgsMapLayerComboBox
 from qgis.utils import iface
@@ -102,3 +103,68 @@ class IdentifyDataDialog(QtWidgets.QDialog, FORM_CLASS):
                 node.setItemVisibilityChecked(True)
 
 
+class IdentifyPopupDialog(QtWidgets.QDialog):
+    featureChanged = QtCore.pyqtSignal(int)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._records = []
+
+        self.setWindowTitle("Fabric Identify")
+        self.setWindowFlags(self.windowFlags() | Qt.Tool)
+        self.resize(520, 420)
+
+        self.titleLabel = QtWidgets.QLabel(self)
+        self.titleLabel.setWordWrap(True)
+
+        self.featureCombo = QtWidgets.QComboBox(self)
+        self.featureCombo.currentIndexChanged.connect(self._onFeatureChanged)
+
+        self.detailsBrowser = QtWidgets.QTextBrowser(self)
+        self.detailsBrowser.setOpenExternalLinks(False)
+
+        self.closeButton = QtWidgets.QPushButton("Close", self)
+        self.closeButton.clicked.connect(self.close)
+
+        combo_layout = QtWidgets.QHBoxLayout()
+        combo_layout.addWidget(QtWidgets.QLabel("Feature:", self))
+        combo_layout.addWidget(self.featureCombo, 1)
+
+        button_layout = QtWidgets.QHBoxLayout()
+        button_layout.addStretch(1)
+        button_layout.addWidget(self.closeButton)
+
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.addWidget(self.titleLabel)
+        layout.addLayout(combo_layout)
+        layout.addWidget(self.detailsBrowser, 1)
+        layout.addLayout(button_layout)
+
+    def set_records(self, title, records):
+        self._records = records or []
+        self.setWindowTitle(title)
+        self.titleLabel.setText(title)
+
+        self.featureCombo.blockSignals(True)
+        self.featureCombo.clear()
+
+        for index, record in enumerate(self._records, start=1):
+            label = record.get("label") or f"Feature {index}"
+            self.featureCombo.addItem(label)
+
+        self.featureCombo.blockSignals(False)
+        self.featureCombo.setVisible(len(self._records) > 1)
+
+        if self._records:
+            self.featureCombo.setCurrentIndex(0)
+            self._onFeatureChanged(0)
+        else:
+            self.detailsBrowser.clear()
+
+    def _onFeatureChanged(self, index):
+        if index < 0 or index >= len(self._records):
+            self.detailsBrowser.clear()
+            return
+
+        self.detailsBrowser.setHtml(self._records[index].get("html", ""))
+        self.featureChanged.emit(index)
