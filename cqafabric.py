@@ -224,6 +224,13 @@ class CQAFabric:
 
         record = self.identify_records[index]
         visual_type = record.get("visual_type")
+        record_layer = record.get("layer")
+
+        if record_layer is not None:
+            self.iface.setActiveLayer(record_layer)
+            node = self.iface.layerTreeView().layerTreeModel().rootGroup().findLayer(record_layer.id())
+            if node is not None:
+                node.setItemVisibilityChecked(True)
 
         if visual_type == "point":
             point = record.get("point")
@@ -304,7 +311,7 @@ class CQAFabric:
         feature_attributes = feature.attributes() if hasattr(feature, "attributes") else []
         return feature_attributes[0] if feature_attributes else None
 
-    def _identify_locations_point_layer(self, point, selected_vintage, selected_layer, displayname_dict):
+    def _identify_locations_point_layer(self, layer, point, selected_vintage, selected_layer, displayname_dict):
         geom = QgsGeometry.fromPointXY(QgsPointXY(point.x(), point.y()))
         geom.transform(QgsCoordinateTransform(QgsProject.instance().crs(), QgsCoordinateReferenceSystem("EPSG:4326"), QgsProject.instance()))
         coordinates_data = [{
@@ -348,6 +355,7 @@ class CQAFabric:
                 "visual_type": "point",
                 "point": QgsPointXY(first_match['longitude'], first_match['latitude']),
                 "point_crs": QgsCoordinateReferenceSystem("EPSG:4326"),
+                "layer": layer,
             })
 
         if not records:
@@ -428,6 +436,7 @@ class CQAFabric:
                 "visual_type": "point",
                 "point": matched_feature["point"] or QgsPointXY(point.x(), point.y()),
                 "point_crs": layer.crs(),
+                "layer": layer,
             })
 
         if not records:
@@ -1390,7 +1399,7 @@ class CQAFabric:
 
             if selected_layer == "locations":
                 return self._identify_locations_point_layer(
-                    point, selected_vintage, selected_layer, displayname_dict
+                    layer, point, selected_vintage, selected_layer, displayname_dict
                 )
             elif is_point_fabric_layer(selected_layer):
                 return self._identify_other_point_layer(
