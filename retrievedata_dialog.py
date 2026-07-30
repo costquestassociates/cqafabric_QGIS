@@ -24,7 +24,8 @@
 
 import os
 
-from qgis.PyQt import uic, QtCore, Qt
+from qgis.PyQt import uic, QtCore
+from qgis.PyQt.QtCore import Qt
 from qgis.PyQt import QtWidgets
 from qgis.PyQt.QtWidgets import QListWidget, QListWidgetItem
 from qgis.core import QgsMapLayerProxyModel, QgsVectorLayer, QgsProject, QgsMapLayer, QgsApplication
@@ -33,8 +34,13 @@ from qgis.utils import iface
 import urllib.request
 import json
 from .generalfunctions import *
-from PyQt5.QtWidgets import QMessageBox
+from qgis.PyQt.QtWidgets import QMessageBox
 from qgis.core import QgsApplication, QgsTask
+
+
+QT_ITEM_DATA_ROLE = getattr(Qt, "ItemDataRole", Qt)
+
+
 # This loads your .ui file so that PyQt can populate your plugin with the elements from Qt Designer
 FORM_CLASS, _ = uic.loadUiType(os.path.join(
     os.path.dirname(__file__), 'retrievedata_dialog_base.ui'))
@@ -142,7 +148,7 @@ class RetrieveDataDialog(QtWidgets.QDialog, FORM_CLASS):
             for field in list:
                 displayname= displayname_dict[field]
                 item = QListWidgetItem(displayname)  # Create item with text directly
-                item.setData(QtCore.Qt.UserRole, field)
+                item.setData(QT_ITEM_DATA_ROLE.UserRole, field)
                 self.availableFeaturesLw.addItem(item)
         else:
             self.removeFeatures()
@@ -211,7 +217,7 @@ class RetrieveDataDialog(QtWidgets.QDialog, FORM_CLASS):
         for field in reversed(list):
             displayname= displayname_dict[field]
             item = QListWidgetItem(displayname)  # Create item with text directly
-            item.setData(QtCore.Qt.UserRole, field)
+            item.setData(QT_ITEM_DATA_ROLE.UserRole, field)
             listWidget.addItem(item)
 
     @staticmethod
@@ -263,7 +269,7 @@ class RetrieveDataDialog(QtWidgets.QDialog, FORM_CLASS):
         ids = []
         for row in range(self.selectedFeaturesLw.count()):
             item = self.selectedFeaturesLw.item(row)
-            ids.append(item.data(Qt.UserRole))
+            ids.append(item.data(QT_ITEM_DATA_ROLE.UserRole))
         return ids
 
     

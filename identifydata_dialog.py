@@ -31,6 +31,9 @@ from qgis.core import QgsMapLayerProxyModel, QgsVectorLayer, QgsProject, QgsMapL
 from qgis.gui import QgsMapLayerComboBox
 from qgis.utils import iface
 
+
+QT_WINDOW_TYPE = getattr(Qt, "WindowType", Qt)
+
 # This loads your .ui file so that PyQt can populate your plugin with the elements from Qt Designer
 FORM_CLASS, _ = uic.loadUiType(os.path.join(
     os.path.dirname(__file__), 'identifydata_dialog_base.ui'))
@@ -156,7 +159,7 @@ class IdentifyPopupDialog(QtWidgets.QDialog):
         self._records = []
 
         self.setWindowTitle("Fabric Identify")
-        self.setWindowFlags(self.windowFlags() | Qt.Tool)
+        self.setWindowFlags(self.windowFlags() | QT_WINDOW_TYPE.Tool)
         self.resize(520, 420)
 
         self.titleLabel = QtWidgets.QLabel(self)

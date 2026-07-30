@@ -4,8 +4,8 @@ import urllib.request
 import urllib.parse
 import os
 import sys
-from PyQt5.QtCore import QUrl
-from PyQt5.QtNetwork import QNetworkRequest
+from qgis.PyQt.QtCore import QUrl
+from qgis.PyQt.QtNetwork import QNetworkRequest
 
 plugin_dir = os.path.dirname(__file__)
 my_module_path = os.path.join(plugin_dir, "cqazapi-pytools") 
