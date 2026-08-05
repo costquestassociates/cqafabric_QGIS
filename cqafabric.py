@@ -44,6 +44,7 @@ import csv
 import datetime
 import time
 import functools
+import html
 
 
 baseuri = "https://api.costquest.com/"
@@ -78,6 +79,7 @@ class CQAFabric:
         self.identify_popup = None
         self.identify_highlights = []
         self.identify_records = []
+        self.identify_message_item = None
 
         # initialize plugin directory
         self.plugin_dir = os.path.dirname(__file__)
@@ -218,6 +220,22 @@ class CQAFabric:
         self._clear_identify_marker()
         self._clear_identify_highlights()
 
+    def _clear_identify_message(self):
+        message_bar = self.iface.messageBar()
+        stale_message = "No visible Fabric feature was found at the clicked location."
+        for item in list(message_bar.items()):
+            try:
+                if stale_message in item.text():
+                    message_bar.popWidget(item)
+            except RuntimeError:
+                pass
+        if self.identify_message_item is not None:
+            try:
+                message_bar.popWidget(self.identify_message_item)
+            except RuntimeError:
+                pass
+        self.identify_message_item = None
+
     def _transform_point(self, point, source_crs, dest_crs):
         if point is None:
             return None
@@ -310,18 +328,45 @@ class CQAFabric:
         for key in headers:
             value = data.get(key)
             displayname = displayname_dict.get(key) or key
+            display_value = "—" if value is None or value == "" else str(value)
             html_rows.append(
-                f"<tr><td style='border: 1px solid #cfcfcf; padding: 4px;'><b>{displayname}</b></td>"
-                f"<td style='border: 1px solid #cfcfcf; padding: 4px;'>{value}</td></tr>"
+                f"<tr><th>{html.escape(str(displayname))}</th>"
+                f"<td>{html.escape(display_value)}</td></tr>"
             )
 
         return (
-            "<html><body>"
-            "<table style='border-collapse: collapse; width: 100%;'>"
+            "<html><head><style>"
+            "body { margin: 8px; color: #263746; font-family: 'Segoe UI', sans-serif; font-size: 9pt; }"
+            "table { border-collapse: collapse; width: 100%; }"
+            "tr:nth-child(even) { background: #f5f7f9; }"
+            "th, td { border-bottom: 1px solid #d8dee4; padding: 3px 5px; text-align: left; vertical-align: top; font-size: 9pt; font-weight: normal; }"
+            "th { width: 38%; color: #356A82; }"
+            "td { color: #263746; }"
+            "td { overflow-wrap: anywhere; }"
+            "</style></head><body><table>"
             f"{''.join(html_rows)}"
             "</table>"
             "</body></html>"
         )
+
+    def _format_identify_clipboard(self, data, displayname_dict):
+        if not isinstance(displayname_dict, dict):
+            displayname_dict = {}
+
+        ordered_keys = list(displayname_dict.keys())
+        ordered_keys.reverse()
+        headers = list(data.keys())
+        headers.sort(key=lambda key: ordered_keys.index(key) if key in ordered_keys else 9999)
+
+        rows = []
+        for key in headers:
+            displayname = displayname_dict.get(key) or key
+            value = data.get(key)
+            display_value = "" if value is None else str(value)
+            displayname = str(displayname).replace("\t", " ").replace("\r", " ").replace("\n", " ")
+            display_value = display_value.replace("\t", " ").replace("\r", " ").replace("\n", " ")
+            rows.append(f"{displayname}\t{display_value}")
+        return "\n".join(rows)
 
     def _feature_attributes_dict(self, feature):
         try:
@@ -374,9 +419,31 @@ class CQAFabric:
         self.vertex_marker.setIconType(QgsVertexMarker.ICON_CIRCLE)
         self.vertex_marker.setPenWidth(3)
 
-        locationid_key = [first_match['location_id']]
-        data_2 = translatefabric(apikey, selected_vintage, locationid_key, None, None)
-        ids = [item['uuid'] for item in data_2 if isinstance(item, dict) and item.get('uuid')]
+        ids = [first_match['uuid']] if first_match.get('uuid') else []
+        if not ids:
+            translated_data = translatefabric(
+                apikey,
+                selected_vintage,
+                [first_match['location_id']],
+                None,
+                None,
+            ) or []
+            ids = [
+                item['uuid']
+                for item in translated_data
+                if isinstance(item, dict) and item.get('uuid')
+            ]
+
+        if not ids:
+            self._close_identify_popup()
+            self._clear_identify_visuals()
+            self.iface.messageBar().pushMessage(
+                "Info",
+                "The identified location did not return a UUID.",
+                level=Qgis.Info,
+            )
+            return False
+
         records = []
 
         for uuid in ids:
@@ -387,6 +454,7 @@ class CQAFabric:
             records.append({
                 "label": label,
                 "html": self._format_identify_html(data, displayname_dict),
+                "copy_text": self._format_identify_clipboard(data, displayname_dict),
                 "visual_type": "point",
                 "point": QgsPointXY(first_match['longitude'], first_match['latitude']),
                 "point_crs": QgsCoordinateReferenceSystem("EPSG:4326"),
@@ -468,6 +536,7 @@ class CQAFabric:
             records.append({
                 "label": label,
                 "html": self._format_identify_html(data, displayname_dict),
+                "copy_text": self._format_identify_clipboard(data, displayname_dict),
                 "visual_type": "point",
                 "point": matched_feature["point"] or QgsPointXY(point.x(), point.y()),
                 "point_crs": layer.crs(),
@@ -1392,6 +1461,7 @@ class CQAFabric:
     def _on_identify_dialog_finished(self):
         self._close_identify_popup()
         self._clear_identify_visuals()
+        self._clear_identify_message()
         self.enable_all_actions()
         if self.pointTool is not None:
             self.iface.mapCanvas().unsetMapTool(self.pointTool)
@@ -1449,6 +1519,7 @@ class CQAFabric:
 
 
     def display_point(self,point: QgsPointXY):
+        self._clear_identify_message()
         layer = self._top_fabric_layer_at_point(point)
 
         self._clear_identify_visuals()
@@ -1509,6 +1580,7 @@ class CQAFabric:
                         records.append({
                             "label": label,
                             "html": self._format_identify_html(data, displayname_dict),
+                            "copy_text": self._format_identify_clipboard(data, displayname_dict),
                             "visual_type": "geometry",
                             "geometry": matched_feature["geometry"],
                             "layer": layer,
@@ -1531,7 +1603,11 @@ class CQAFabric:
         except Exception as exception:
             self._close_identify_popup()
             self._clear_identify_visuals()
-            self.iface.messageBar().pushMessage("Info", f"Identify failed: {exception}", level=Qgis.Warning)
+            message_bar = self.iface.messageBar()
+            self.identify_message_item = message_bar.createMessage(
+                "Info", f"Identify failed: {exception}"
+            )
+            message_bar.pushWidget(self.identify_message_item, Qgis.Warning)
             return False
 
 
