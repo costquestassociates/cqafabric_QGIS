@@ -159,6 +159,11 @@ class CQAFabric:
         )
 
     def _save_locate_result(self):
+        if self.dlg.checkBox_CSV.isChecked():
+            result = self.show_geocode_fabric(populate_table=False)
+            if not result:
+                return
+
         if not csv_filepath or not selected_vintage or not combined_data_values:
             self.dlg.infoBox.setText("Run a locate search with a CSV file before exporting results.")
             self.dlg.infoBox.setStyleSheet("color: red;")
@@ -166,6 +171,10 @@ class CQAFabric:
             return
 
         self.load_csv_result("locations", selected_vintage, combined_data_values, csv_filepath)
+
+    def _update_locate_save_button(self, batch_run):
+        self.dlg.saveBtn.setEnabled(batch_run)
+        self.dlg.saveBtn.setStyleSheet("color: green;" if batch_run else "color: gray;")
 
     def _clear_identify_marker(self):
         if self.vertex_marker:
@@ -1485,10 +1494,11 @@ class CQAFabric:
         # if populatetableBtn is clicked, show the table with the selected features
         self.dlg.showBtn.clicked.connect(self.show_geocode_fabric)
         self.dlg.saveBtn.clicked.connect(self._save_locate_result)
+        self.dlg.checkBox_CSV.toggled.connect(self._update_locate_save_button)
         # when dlg is closed, uncheck the action
         self.dlg.finished.connect(self._on_locate_dialog_finished)
 
-    def show_geocode_fabric(self):
+    def show_geocode_fabric(self, checked=False, populate_table=True):
         global selected_vintage
         global combined_data_values
         global csv_filepath
@@ -1680,16 +1690,17 @@ class CQAFabric:
                 self.dlg.tableResult.setModel(model)
                 return
 
-            self.SetDataModel(model, combined_data_values,selected_vintage,selected_layer)
+            if populate_table:
+                self.SetDataModel(model, combined_data_values,selected_vintage,selected_layer)
 
-            # Set the model to the table view
-            self.dlg.tableResult.setModel(model)
-            # Set the column width to fit the content
-            for column in range(model.columnCount()):
-                self.dlg.tableResult.resizeColumnToContents(column)
-            # Set the row height to fit the content
-            for row in range(model.rowCount()):
-                self.dlg.tableResult.setRowHeight(row, 20)
+                # Set the model to the table view
+                self.dlg.tableResult.setModel(model)
+                # Set the column width to fit the content
+                for column in range(model.columnCount()):
+                    self.dlg.tableResult.resizeColumnToContents(column)
+                # Set the row height to fit the content
+                for row in range(model.rowCount()):
+                    self.dlg.tableResult.setRowHeight(row, 20)
             self.dlg.infoBox.setText(str(len(combined_data_values)) + " ids data retrieved successfully. Ready to Export.")
             self.dlg.infoBox.setStyleSheet("color: green;")
             QApplication.processEvents()
