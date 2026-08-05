@@ -1401,25 +1401,65 @@ class CQAFabric:
         self._reset_locate_result_state()
         self.enable_all_actions()
 
+    def _visible_fabric_layers(self):
+        layers = []
+        for layer in self.iface.mapCanvas().layers():
+            if not isinstance(layer, QgsVectorTileLayer):
+                continue
+            try:
+                uri = layer.dataProvider().dataSourceUri()
+            except Exception:
+                continue
+            if "fabric/" in uri and "/tiles/" in uri:
+                layers.append(layer)
+        return layers
+
+    def _layer_has_feature_at_point(self, layer, point):
+        canvas = self.iface.mapCanvas()
+        canvas_crs = canvas.mapSettings().destinationCrs()
+        click_geometry = QgsGeometry.fromPointXY(QgsPointXY(point))
+        tolerance = max(canvas.mapUnitsPerPixel() * 8, 0.000001)
+        search_geometry = click_geometry.buffer(tolerance, 12)
+
+        if canvas_crs != layer.crs():
+            search_geometry.transform(
+                QgsCoordinateTransform(canvas_crs, layer.crs(), QgsProject.instance())
+            )
+
+        context = QgsSelectionContext()
+        context.setScale(canvas.scale())
+        layer.selectByGeometry(
+            QgsGeometry.fromRect(search_geometry.boundingBox()),
+            context,
+        )
+        has_feature = bool(layer.selectedFeatures())
+        layer.removeSelection()
+        return has_feature
+
+    def _top_fabric_layer_at_point(self, point):
+        for layer in self._visible_fabric_layers():
+            try:
+                if self._layer_has_feature_at_point(layer, point):
+                    return layer
+            except Exception:
+                continue
+        return None
+
 
 
 
     def display_point(self,point: QgsPointXY):
-        layer = None
-        if getattr(self, "dlg", None) is not None and hasattr(self.dlg, "mapVlayersCb"):
-            layer = self.dlg.mapVlayersCb.currentLayer()
-        if layer is None:
-            layer = self.iface.activeLayer()
+        layer = self._top_fabric_layer_at_point(point)
 
         self._clear_identify_visuals()
 
         try:
             if layer is None:
-                raise ValueError("No active layer is selected.")
+                raise ValueError("No visible Fabric feature was found at the clicked location.")
 
             uri = layer.dataProvider().dataSourceUri()
             if "url=" not in uri or "fabric/" not in uri or "tiles/" not in uri:
-                raise ValueError("Active layer is not a Fabric vector tile layer.")
+                raise ValueError("The clicked layer is not a Fabric vector tile layer.")
 
             # get the url of uri
             url = uri.split("url=")[1].split("&")[0]
@@ -1491,7 +1531,7 @@ class CQAFabric:
         except Exception as exception:
             self._close_identify_popup()
             self._clear_identify_visuals()
-            self.iface.messageBar().pushMessage("Info", f"Identify failed for the selected Fabric layer: {exception}", level=Qgis.Warning)
+            self.iface.messageBar().pushMessage("Info", f"Identify failed: {exception}", level=Qgis.Warning)
             return False
 
 

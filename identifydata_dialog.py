@@ -52,9 +52,10 @@ class IdentifyDataDialog(QtWidgets.QDialog, FORM_CLASS):
         self.setupUi(self)
         self._layer: QgsVectorTileLayer = None
         self._available_layers = []
-        self._initConnections()
-        self.mapVlayersCb.setCurrentIndex(-1)
-        self._applyDefaultLayerSelection()
+        self.mapVlayersCb.hide()
+        self.label_layer.setText("Click a Fabric feature on the map")
+        self.label_layer.setGeometry(10, 10, 370, 21)
+        self.setFixedSize(390, 42)
 
     def _initConnections(self):
         # remove all layers from the combobox
@@ -155,7 +156,7 @@ class IdentifyPopupDialog(QtWidgets.QDialog):
         super().__init__(parent)
         self._records = []
 
-        self.setWindowTitle("Fabric Identify")
+        self.setWindowTitle("Pop-up")
         self.setWindowFlags(self.windowFlags() | Qt.Tool)
         self.resize(520, 420)
 
@@ -172,7 +173,6 @@ class IdentifyPopupDialog(QtWidgets.QDialog):
         self.closeButton.clicked.connect(self.close)
 
         combo_layout = QtWidgets.QHBoxLayout()
-        combo_layout.addWidget(QtWidgets.QLabel("Feature:", self))
         combo_layout.addWidget(self.featureCombo, 1)
 
         button_layout = QtWidgets.QHBoxLayout()
@@ -187,7 +187,7 @@ class IdentifyPopupDialog(QtWidgets.QDialog):
 
     def set_records(self, title, records):
         self._records = records or []
-        self.setWindowTitle(title)
+        self.setWindowTitle("Pop-up")
         self.titleLabel.setText(title)
 
         self.featureCombo.blockSignals(True)

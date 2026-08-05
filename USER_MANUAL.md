@@ -108,21 +108,21 @@ Use this tool to click a Fabric feature on the map and inspect its attributes.
 
 ### What You Need
 
-- An active Fabric vector tile layer in the Layers panel
+- At least one visible Fabric vector tile layer
 
 ### Steps
 
 1. Add a Fabric layer to the map with `Add Fabric Tiles`.
-2. Make that Fabric layer the active layer in the Layers panel.
-3. Open `CQA Fabric > Identify Fabric`.
-4. Click a feature on the map canvas.
-5. Review the attributes shown in the popup window.
+2. Open `CQA Fabric > Identify Fabric`.
+3. Click a feature on the map canvas.
+4. Review the attributes shown in the popup window.
 
 ### Notes
 
 - For the `locations` layer, the plugin locates the nearest Fabric location to the clicked point and marks it on the map.
 - For polygon-style Fabric layers, the plugin highlights the selected geometry before showing details.
-- If no Fabric layer is active, the plugin shows an informational message instead of returning data.
+- If features from multiple visible Fabric layers overlap, the topmost layer in the Layers panel is identified.
+- If no visible Fabric feature is found at the click, the plugin shows an informational message.
 
 ## Locate Fabric
 
@@ -206,7 +206,7 @@ The plugin creates or uses the following local files:
 
 - If using selection-only mode in `Retrieve Fabric`, make sure you selected polygons in the boundary layer before running the tool.
 
-### Identify Fabric says no active Fabric layer
+### Identify Fabric finds no feature
 
 - Activate a Fabric vector tile layer in the Layers panel before clicking the map.
 

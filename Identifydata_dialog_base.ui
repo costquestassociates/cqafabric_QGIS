@@ -65,7 +65,7 @@
     </font>
    </property>
    <property name="text">
-    <string>Active Layer</string>
+    <string>Click a Fabric feature on the map</string>
    </property>
   </widget>
   <widget class="QgsMapLayerComboBox" name="mapVlayersCb">
