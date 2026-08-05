@@ -328,7 +328,7 @@ class CQAFabric:
         for key in headers:
             value = data.get(key)
             displayname = displayname_dict.get(key) or key
-            display_value = "—" if value is None or value == "" else str(value)
+            display_value = "" if value is None or value == "" else str(value)
             html_rows.append(
                 f"<tr><th>{html.escape(str(displayname))}</th>"
                 f"<td>{html.escape(display_value)}</td></tr>"
