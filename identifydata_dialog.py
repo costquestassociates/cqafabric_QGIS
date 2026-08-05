@@ -55,9 +55,10 @@ class IdentifyDataDialog(QtWidgets.QDialog, FORM_CLASS):
         self.setupUi(self)
         self._layer: QgsVectorTileLayer = None
         self._available_layers = []
-        self._initConnections()
-        self.mapVlayersCb.setCurrentIndex(-1)
-        self._applyDefaultLayerSelection()
+        self.mapVlayersCb.hide()
+        self.label_layer.setText("Click a Fabric feature on the map")
+        self.label_layer.setGeometry(10, 10, 370, 21)
+        self.setFixedSize(390, 42)
 
     def _initConnections(self):
         # remove all layers from the combobox
@@ -157,13 +158,32 @@ class IdentifyPopupDialog(QtWidgets.QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._records = []
+        self._currentIndex = -1
 
-        self.setWindowTitle("Fabric Identify")
-        self.setWindowFlags(self.windowFlags() | QT_WINDOW_TYPE.Tool)
-        self.resize(520, 420)
+        self.setWindowTitle("Pop-up")
+        self.setWindowFlags(self.windowFlags() | Qt.Tool)
+        self.resize(580, 460)
+        self.setMinimumSize(500, 360)
+        self.setStyleSheet("""
+            QDialog { background: #f4f6f8; }
+            QComboBox {
+                background: white;
+                border: 1px solid #b8c2cc;
+                border-radius: 4px;
+                padding: 5px 8px;
+                min-height: 22px;
+            }
+            QTextBrowser {
+                background: white;
+                border: 1px solid #c8d0d8;
+                border-radius: 5px;
+            }
+            QPushButton { min-width: 90px; padding: 5px 12px; }
+        """)
 
         self.titleLabel = QtWidgets.QLabel(self)
         self.titleLabel.setWordWrap(True)
+        self.titleLabel.setStyleSheet("font-size: 10pt; font-weight: normal; color: #0077B6;")
 
         self.featureCombo = QtWidgets.QComboBox(self)
         self.featureCombo.currentIndexChanged.connect(self._onFeatureChanged)
@@ -171,18 +191,25 @@ class IdentifyPopupDialog(QtWidgets.QDialog):
         self.detailsBrowser = QtWidgets.QTextBrowser(self)
         self.detailsBrowser.setOpenExternalLinks(False)
 
+        self.copyButton = QtWidgets.QPushButton("Copy Details", self)
+        self.copyButton.setStyleSheet("font-size: 7pt;")
+        self.copyButton.clicked.connect(self._copyDetails)
+
         self.closeButton = QtWidgets.QPushButton("Close", self)
+        self.closeButton.setStyleSheet("font-size: 7pt;")
         self.closeButton.clicked.connect(self.close)
 
         combo_layout = QtWidgets.QHBoxLayout()
-        combo_layout.addWidget(QtWidgets.QLabel("Feature:", self))
         combo_layout.addWidget(self.featureCombo, 1)
 
         button_layout = QtWidgets.QHBoxLayout()
+        button_layout.addWidget(self.copyButton)
         button_layout.addStretch(1)
         button_layout.addWidget(self.closeButton)
 
         layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(10)
         layout.addWidget(self.titleLabel)
         layout.addLayout(combo_layout)
         layout.addWidget(self.detailsBrowser, 1)
@@ -190,9 +217,8 @@ class IdentifyPopupDialog(QtWidgets.QDialog):
 
     def set_records(self, title, records):
         self._records = records or []
-        self.setWindowTitle(title)
+        self.setWindowTitle("Pop-up")
         self.titleLabel.setText(title)
-
         self.featureCombo.blockSignals(True)
         self.featureCombo.clear()
 
@@ -209,10 +235,23 @@ class IdentifyPopupDialog(QtWidgets.QDialog):
         else:
             self.detailsBrowser.clear()
 
+        self.copyButton.setEnabled(bool(self._records))
+
+    def _copyDetails(self):
+        if self._currentIndex < 0 or self._currentIndex >= len(self._records):
+            return
+        record = self._records[self._currentIndex]
+        mime_data = QtCore.QMimeData()
+        mime_data.setHtml(record.get("html", ""))
+        mime_data.setText(record.get("copy_text", self.detailsBrowser.toPlainText()))
+        QtWidgets.QApplication.clipboard().setMimeData(mime_data)
+
     def _onFeatureChanged(self, index):
         if index < 0 or index >= len(self._records):
             self.detailsBrowser.clear()
+            self._currentIndex = -1
             return
 
+        self._currentIndex = index
         self.detailsBrowser.setHtml(self._records[index].get("html", ""))
         self.featureChanged.emit(index)

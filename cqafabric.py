@@ -43,6 +43,7 @@ import csv
 import datetime
 import time
 import functools
+import html
 
 
 # Qt5 exposes many enums directly on their classes, while Qt6 nests them.
@@ -83,6 +84,7 @@ class CQAFabric:
         self.identify_popup = None
         self.identify_highlights = []
         self.identify_records = []
+        self.identify_message_item = None
 
         # initialize plugin directory
         self.plugin_dir = os.path.dirname(__file__)
@@ -164,13 +166,48 @@ class CQAFabric:
         )
 
     def _save_locate_result(self):
+        if self.dlg.checkBox_CSV.isChecked():
+            input_csv = self.dlg.mQgsFileWidget.filePath()
+            if not input_csv:
+                self.dlg.infoBox.setText("CSV file is required for this operation.")
+                self.dlg.infoBox.setStyleSheet("color: red;")
+                QApplication.processEvents()
+                return
+
+            vintage = self.dlg.comboBox_vintage.currentText()
+            timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+            default_output = (
+                os.path.splitext(input_csv)[0]
+                + f"_locations{vintage}_{timestamp}.csv"
+            )
+            output_csv, _ = QFileDialog.getSaveFileName(
+                self.dlg,
+                "Save Locate Results As",
+                default_output,
+                "CSV files (*.csv)",
+            )
+            if not output_csv:
+                return
+            if not output_csv.lower().endswith(".csv"):
+                output_csv += ".csv"
+
+            result = self.show_geocode_fabric(populate_table=False)
+            if not result:
+                return
+        else:
+            output_csv = None
+
         if not csv_filepath or not selected_vintage or not combined_data_values:
             self.dlg.infoBox.setText("Run a locate search with a CSV file before exporting results.")
             self.dlg.infoBox.setStyleSheet("color: red;")
             QApplication.processEvents()
             return
 
-        self.load_csv_result("locations", selected_vintage, combined_data_values, csv_filepath)
+        self.load_csv_result(combined_data_values, output_csv)
+
+    def _update_locate_save_button(self, batch_run):
+        self.dlg.saveBtn.setEnabled(batch_run)
+        self.dlg.saveBtn.setStyleSheet("color: green;" if batch_run else "color: gray;")
 
     def _clear_identify_marker(self):
         if self.vertex_marker:
@@ -187,6 +224,22 @@ class CQAFabric:
     def _clear_identify_visuals(self):
         self._clear_identify_marker()
         self._clear_identify_highlights()
+
+    def _clear_identify_message(self):
+        message_bar = self.iface.messageBar()
+        stale_message = "No visible Fabric feature was found at the clicked location."
+        for item in list(message_bar.items()):
+            try:
+                if stale_message in item.text():
+                    message_bar.popWidget(item)
+            except RuntimeError:
+                pass
+        if self.identify_message_item is not None:
+            try:
+                message_bar.popWidget(self.identify_message_item)
+            except RuntimeError:
+                pass
+        self.identify_message_item = None
 
     def _transform_point(self, point, source_crs, dest_crs):
         if point is None:
@@ -280,18 +333,45 @@ class CQAFabric:
         for key in headers:
             value = data.get(key)
             displayname = displayname_dict.get(key) or key
+            display_value = "" if value is None or value == "" else str(value)
             html_rows.append(
-                f"<tr><td style='border: 1px solid #cfcfcf; padding: 4px;'><b>{displayname}</b></td>"
-                f"<td style='border: 1px solid #cfcfcf; padding: 4px;'>{value}</td></tr>"
+                f"<tr><th>{html.escape(str(displayname))}</th>"
+                f"<td>{html.escape(display_value)}</td></tr>"
             )
 
         return (
-            "<html><body>"
-            "<table style='border-collapse: collapse; width: 100%;'>"
+            "<html><head><style>"
+            "body { margin: 8px; color: #263746; font-family: 'Segoe UI', sans-serif; font-size: 9pt; }"
+            "table { border-collapse: collapse; width: 100%; }"
+            "tr:nth-child(even) { background: #f5f7f9; }"
+            "th, td { border-bottom: 1px solid #d8dee4; padding: 3px 5px; text-align: left; vertical-align: top; font-size: 9pt; font-weight: normal; }"
+            "th { width: 38%; color: #356A82; }"
+            "td { color: #263746; }"
+            "td { overflow-wrap: anywhere; }"
+            "</style></head><body><table>"
             f"{''.join(html_rows)}"
             "</table>"
             "</body></html>"
         )
+
+    def _format_identify_clipboard(self, data, displayname_dict):
+        if not isinstance(displayname_dict, dict):
+            displayname_dict = {}
+
+        ordered_keys = list(displayname_dict.keys())
+        ordered_keys.reverse()
+        headers = list(data.keys())
+        headers.sort(key=lambda key: ordered_keys.index(key) if key in ordered_keys else 9999)
+
+        rows = []
+        for key in headers:
+            displayname = displayname_dict.get(key) or key
+            value = data.get(key)
+            display_value = "" if value is None else str(value)
+            displayname = str(displayname).replace("\t", " ").replace("\r", " ").replace("\n", " ")
+            display_value = display_value.replace("\t", " ").replace("\r", " ").replace("\n", " ")
+            rows.append(f"{displayname}\t{display_value}")
+        return "\n".join(rows)
 
     def _feature_attributes_dict(self, feature):
         try:
@@ -344,9 +424,31 @@ class CQAFabric:
         self.vertex_marker.setIconType(QgsVertexMarker.ICON_CIRCLE)
         self.vertex_marker.setPenWidth(3)
 
-        locationid_key = [first_match['location_id']]
-        data_2 = translatefabric(apikey, selected_vintage, locationid_key, None, None)
-        ids = [item['uuid'] for item in data_2 if isinstance(item, dict) and item.get('uuid')]
+        ids = [first_match['uuid']] if first_match.get('uuid') else []
+        if not ids:
+            translated_data = translatefabric(
+                apikey,
+                selected_vintage,
+                [first_match['location_id']],
+                None,
+                None,
+            ) or []
+            ids = [
+                item['uuid']
+                for item in translated_data
+                if isinstance(item, dict) and item.get('uuid')
+            ]
+
+        if not ids:
+            self._close_identify_popup()
+            self._clear_identify_visuals()
+            self.iface.messageBar().pushMessage(
+                "Info",
+                "The identified location did not return a UUID.",
+                level=Qgis.Info,
+            )
+            return False
+
         records = []
 
         for uuid in ids:
@@ -357,6 +459,7 @@ class CQAFabric:
             records.append({
                 "label": label,
                 "html": self._format_identify_html(data, displayname_dict),
+                "copy_text": self._format_identify_clipboard(data, displayname_dict),
                 "visual_type": "point",
                 "point": QgsPointXY(first_match['longitude'], first_match['latitude']),
                 "point_crs": QgsCoordinateReferenceSystem("EPSG:4326"),
@@ -438,6 +541,7 @@ class CQAFabric:
             records.append({
                 "label": label,
                 "html": self._format_identify_html(data, displayname_dict),
+                "copy_text": self._format_identify_clipboard(data, displayname_dict),
                 "visual_type": "point",
                 "point": matched_feature["point"] or QgsPointXY(point.x(), point.y()),
                 "point_crs": layer.crs(),
@@ -907,17 +1011,13 @@ class CQAFabric:
             QApplication.processEvents()
             
             
-    def load_csv_result(self,selected_layer,selected_vintage,combined_data_values,csv_filepath):
+    def load_csv_result(self, combined_data_values, csvoutput_file):
             self.dlg.progressBar.resetFormat()
-            if not csv_filepath or not combined_data_values:
+            if not csvoutput_file or not combined_data_values:
                 self.dlg.infoBox.setText("Locate results are not ready to export yet.")
                 self.dlg.infoBox.setStyleSheet("color: red;")
                 QApplication.processEvents()
                 return
-            # get csv file path without extension
-            csv_filepath_without_extension = os.path.splitext(csv_filepath)[0]       
-            DateStamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-            csvoutput_file = csv_filepath_without_extension+ f"_{selected_layer}{selected_vintage}_{DateStamp}.csv"     
 
             with open(csvoutput_file, mode="w", newline="") as file:
             # Get all keys from the first inner dictionary (assuming all dictionaries have the same structure)
@@ -1368,6 +1468,7 @@ class CQAFabric:
     def _on_identify_dialog_finished(self):
         self._close_identify_popup()
         self._clear_identify_visuals()
+        self._clear_identify_message()
         self.enable_all_actions()
         if self.pointTool is not None:
             self.iface.mapCanvas().unsetMapTool(self.pointTool)
@@ -1377,25 +1478,66 @@ class CQAFabric:
         self._reset_locate_result_state()
         self.enable_all_actions()
 
+    def _visible_fabric_layers(self):
+        layers = []
+        for layer in self.iface.mapCanvas().layers():
+            if not isinstance(layer, QgsVectorTileLayer):
+                continue
+            try:
+                uri = layer.dataProvider().dataSourceUri()
+            except Exception:
+                continue
+            if "fabric/" in uri and "/tiles/" in uri:
+                layers.append(layer)
+        return layers
+
+    def _layer_has_feature_at_point(self, layer, point):
+        canvas = self.iface.mapCanvas()
+        canvas_crs = canvas.mapSettings().destinationCrs()
+        click_geometry = QgsGeometry.fromPointXY(QgsPointXY(point))
+        tolerance = max(canvas.mapUnitsPerPixel() * 8, 0.000001)
+        search_geometry = click_geometry.buffer(tolerance, 12)
+
+        if canvas_crs != layer.crs():
+            search_geometry.transform(
+                QgsCoordinateTransform(canvas_crs, layer.crs(), QgsProject.instance())
+            )
+
+        context = QgsSelectionContext()
+        context.setScale(canvas.scale())
+        layer.selectByGeometry(
+            QgsGeometry.fromRect(search_geometry.boundingBox()),
+            context,
+        )
+        has_feature = bool(layer.selectedFeatures())
+        layer.removeSelection()
+        return has_feature
+
+    def _top_fabric_layer_at_point(self, point):
+        for layer in self._visible_fabric_layers():
+            try:
+                if self._layer_has_feature_at_point(layer, point):
+                    return layer
+            except Exception:
+                continue
+        return None
+
 
 
 
     def display_point(self,point: QgsPointXY):
-        layer = None
-        if getattr(self, "dlg", None) is not None and hasattr(self.dlg, "mapVlayersCb"):
-            layer = self.dlg.mapVlayersCb.currentLayer()
-        if layer is None:
-            layer = self.iface.activeLayer()
+        self._clear_identify_message()
+        layer = self._top_fabric_layer_at_point(point)
 
         self._clear_identify_visuals()
 
         try:
             if layer is None:
-                raise ValueError("No active layer is selected.")
+                raise ValueError("No visible Fabric feature was found at the clicked location.")
 
             uri = layer.dataProvider().dataSourceUri()
             if "url=" not in uri or "fabric/" not in uri or "tiles/" not in uri:
-                raise ValueError("Active layer is not a Fabric vector tile layer.")
+                raise ValueError("The clicked layer is not a Fabric vector tile layer.")
 
             # get the url of uri
             url = uri.split("url=")[1].split("&")[0]
@@ -1445,6 +1587,7 @@ class CQAFabric:
                         records.append({
                             "label": label,
                             "html": self._format_identify_html(data, displayname_dict),
+                            "copy_text": self._format_identify_clipboard(data, displayname_dict),
                             "visual_type": "geometry",
                             "geometry": matched_feature["geometry"],
                             "layer": layer,
@@ -1467,7 +1610,11 @@ class CQAFabric:
         except Exception as exception:
             self._close_identify_popup()
             self._clear_identify_visuals()
-            self.iface.messageBar().pushMessage("Info", f"Identify failed for the selected Fabric layer: {exception}", level=Qgis.Warning)
+            message_bar = self.iface.messageBar()
+            self.identify_message_item = message_bar.createMessage(
+                "Info", f"Identify failed: {exception}"
+            )
+            message_bar.pushWidget(self.identify_message_item, Qgis.Warning)
             return False
 
 
@@ -1492,10 +1639,11 @@ class CQAFabric:
         # if populatetableBtn is clicked, show the table with the selected features
         self.dlg.showBtn.clicked.connect(self.show_geocode_fabric)
         self.dlg.saveBtn.clicked.connect(self._save_locate_result)
+        self.dlg.checkBox_CSV.toggled.connect(self._update_locate_save_button)
         # when dlg is closed, uncheck the action
         self.dlg.finished.connect(self._on_locate_dialog_finished)
 
-    def show_geocode_fabric(self):
+    def show_geocode_fabric(self, checked=False, populate_table=True):
         global selected_vintage
         global combined_data_values
         global csv_filepath
@@ -1507,6 +1655,8 @@ class CQAFabric:
         headers = None
         selected_vintage = self.dlg.comboBox_vintage.currentText()  
         selected_layer = "locations"
+        preview_limit = 500 if populate_table and self.dlg.checkBox_CSV.isChecked() else None
+        preview_truncated = False
         n = 0
         if self.dlg.AddrButton.isChecked():
             coordinates_data = []
@@ -1524,7 +1674,10 @@ class CQAFabric:
                     addresstexts = []
                     with open(self.dlg.mQgsFileWidget.filePath(), newline='', encoding='utf-8') as csvfile:
                         reader = csv.DictReader(csvfile)
-                        for row in reader:
+                        for row_number, row in enumerate(reader):
+                            if preview_limit is not None and row_number >= preview_limit:
+                                preview_truncated = True
+                                break
                             # read columnname regardless of case
                             address_col = next((col for col in row.keys() if col.lower() == 'address'), None)
                             sourcekey_col = next((col for col in row.keys() if col.lower() == 'sourcekey'), None)
@@ -1543,15 +1696,24 @@ class CQAFabric:
                     QApplication.processEvents()
                     return
             data_1 = []
-            for addresstext in addresstexts:
-                for sourcekey, address in addresstext.items():
-                    data = matchautocomplete(apikey, address, selected_vintage)
-                    if data: 
-                        for key, value in data.items():
-                            coordinates = None
-                            if key == "locations":
-                                for item in value:
-                                    data_1.append({"uuid":item['uuid'],"location_id":item['location_id'],"Latitude":item['latitude'],"Longitude":item['longitude'],"sourcekey": sourcekey})
+            if self.dlg.checkBox_CSV.isChecked():
+                address_data = [
+                    {"sourcekey": sourcekey, "text": address}
+                    for addresstext in addresstexts
+                    for sourcekey, address in addresstext.items()
+                ]
+                match_results = matchfabric(apikey, selected_vintage, address_data) or []
+                for match_result in match_results:
+                    sourcekey = match_result.get("sourcekey")
+                    for item in match_result.get("locations") or []:
+                        data_1.append({"uuid":item['uuid'],"location_id":item['location_id'],"Latitude":item['latitude'],"Longitude":item['longitude'],"sourcekey": sourcekey})
+            else:
+                for addresstext in addresstexts:
+                    for sourcekey, address in addresstext.items():
+                        data = matchautocomplete(apikey, address, selected_vintage)
+                        if data:
+                            for item in data.get("locations") or []:
+                                data_1.append({"uuid":item['uuid'],"location_id":item['location_id'],"Latitude":item['latitude'],"Longitude":item['longitude'],"sourcekey": sourcekey})
                           
                                     
 
@@ -1585,7 +1747,10 @@ class CQAFabric:
 
                     with open(self.dlg.mQgsFileWidget.filePath(), newline='', encoding='utf-8') as csvfile:
                         reader = csv.DictReader(csvfile)
-                        for row in reader:
+                        for row_number, row in enumerate(reader):
+                            if preview_limit is not None and row_number >= preview_limit:
+                                preview_truncated = True
+                                break
                             lat_col = next((col for col in row.keys() if col.lower() == 'latitude'), None)
                             lon_col = next((col for col in row.keys() if col.lower() == 'longitude'), None)
                             sourcekey_col = next((col for col in row.keys() if col.lower() == 'sourcekey'), None)
@@ -1609,7 +1774,7 @@ class CQAFabric:
                     return
         
         
-            data_1 = locatefabric(apikey, selected_vintage, coordinates_data)
+            data_1 = locatefabric(apikey, selected_vintage, coordinates_data, neardistancem=100)
         if not data_1:
             self.dlg.saveBtn.setEnabled(False)
             self.dlg.saveBtn.setStyleSheet("color: gray;")
@@ -1625,7 +1790,7 @@ class CQAFabric:
                 from collections import defaultdict
                 locationid_key = defaultdict(list)
                 for item in data_1:
-                    if isinstance(item, dict):
+                    if isinstance(item, dict) and item.get('location_id') is not None:
                         locationid_key[item.get('location_id')].append(item.get('sourcekey'))
 
                 # Example of locationid_key after processing data_1:
@@ -1640,14 +1805,54 @@ class CQAFabric:
                 #     'loc2': ['B']
                 # }
                 if locationid_key:
-                    data_2 = translatefabric(apikey, selected_vintage, list(locationid_key.keys()), None, None)
-                        
-                    ids = [item.get('uuid') for item in data_2 if isinstance(item, dict)]
+                    ids = list(dict.fromkeys(
+                        item.get('uuid')
+                        for item in data_1
+                        if isinstance(item, dict) and item.get('uuid')
+                    ))
+                    missing_location_ids = list(dict.fromkeys(
+                        item.get('location_id')
+                        for item in data_1
+                        if isinstance(item, dict)
+                        and item.get('location_id') is not None
+                        and not item.get('uuid')
+                    ))
+                    if missing_location_ids:
+                        translated_data = translatefabric(
+                            apikey,
+                            selected_vintage,
+                            missing_location_ids,
+                            None,
+                            None,
+                        ) or []
+                        ids.extend(
+                            item.get('uuid')
+                            for item in translated_data
+                            if isinstance(item, dict) and item.get('uuid')
+                        )
+                        ids = list(dict.fromkeys(ids))
+
+                    if not ids:
+                        self.dlg.infoBox.setText("Unable to retrieve UUIDs needed to attach attributes.")
+                        self.dlg.infoBox.setStyleSheet("color: red;")
+                        QApplication.processEvents()
+                        return
+
                     fieldnames = getfieldsinfo(selected_vintage, selected_layer, apikey)
+                    if not fieldnames:
+                        self.dlg.infoBox.setText("Unable to retrieve Fabric field metadata. Please wait and try again.")
+                        self.dlg.infoBox.setStyleSheet("color: red;")
+                        QApplication.processEvents()
+                        return
                     displayname_dict = getfieldsdisplayname(selected_vintage,selected_layer,apikey)
                     ordered_keys = list(displayname_dict.keys())
                     ordered_keys.reverse()
-                    combined_data_values = attach(selected_vintage,selected_layer, ids, fieldnames, apikey)
+                    combined_data_values = attach(selected_vintage,selected_layer, ids, fieldnames, apikey) or []
+                    if not combined_data_values:
+                        self.dlg.infoBox.setText("No attribute records were returned by the API.")
+                        self.dlg.infoBox.setStyleSheet("color: red;")
+                        QApplication.processEvents()
+                        return
                     data_add = []
                     for item in combined_data_values:
                         if len(locationid_key.get(item['location_id'])) > 1:
@@ -1687,17 +1892,25 @@ class CQAFabric:
                 self.dlg.tableResult.setModel(model)
                 return
 
-            self.SetDataModel(model, combined_data_values,selected_vintage,selected_layer)
+            if populate_table:
+                display_data = combined_data_values
+                if self.dlg.checkBox_CSV.isChecked():
+                    display_data = combined_data_values[:500]
 
-            # Set the model to the table view
-            self.dlg.tableResult.setModel(model)
-            # Set the column width to fit the content
-            for column in range(model.columnCount()):
-                self.dlg.tableResult.resizeColumnToContents(column)
-            # Set the row height to fit the content
-            for row in range(model.rowCount()):
-                self.dlg.tableResult.setRowHeight(row, 20)
-            self.dlg.infoBox.setText(str(len(combined_data_values)) + " ids data retrieved successfully. Ready to Export.")
+                self.SetDataModel(model, display_data,selected_vintage,selected_layer)
+
+                # Set the model to the table view
+                self.dlg.tableResult.setModel(model)
+                # Set the column width to fit the content
+                for column in range(model.columnCount()):
+                    self.dlg.tableResult.resizeColumnToContents(column)
+                # Set the row height to fit the content
+                for row in range(model.rowCount()):
+                    self.dlg.tableResult.setRowHeight(row, 20)
+            result_message = str(len(combined_data_values)) + " ids data retrieved successfully. Ready to Export."
+            if preview_truncated:
+                result_message += " Showing results for the first 500 input records."
+            self.dlg.infoBox.setText(result_message)
             self.dlg.infoBox.setStyleSheet("color: green;")
             QApplication.processEvents()
             if csv_filepath:
