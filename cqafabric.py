@@ -24,7 +24,7 @@
 from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication, Qt, QPoint
 from qgis.PyQt.QtGui import QIcon, QColor, QCursor
 from qgis.PyQt.QtWidgets import QAction, QToolButton, QMenu
-from PyQt5.QtWidgets import QMessageBox, QVBoxLayout, QLabel, QWidget, QPushButton, QLineEdit, QApplication
+from PyQt5.QtWidgets import QMessageBox, QVBoxLayout, QLabel, QWidget, QPushButton, QLineEdit, QApplication, QFileDialog
 from PyQt5.QtGui import QStandardItemModel, QStandardItem
 from qgis.core import QgsProject, QgsVectorLayer, Qgis, QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsSelectionContext, QgsFeature, QgsPointXY, QgsGeometry, QgsSettings, QgsMapLayer, QgsJsonExporter, QgsTask, QgsApplication, QgsFeatureRequest
 import processing
@@ -160,9 +160,35 @@ class CQAFabric:
 
     def _save_locate_result(self):
         if self.dlg.checkBox_CSV.isChecked():
+            input_csv = self.dlg.mQgsFileWidget.filePath()
+            if not input_csv:
+                self.dlg.infoBox.setText("CSV file is required for this operation.")
+                self.dlg.infoBox.setStyleSheet("color: red;")
+                QApplication.processEvents()
+                return
+
+            vintage = self.dlg.comboBox_vintage.currentText()
+            timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+            default_output = (
+                os.path.splitext(input_csv)[0]
+                + f"_locations{vintage}_{timestamp}.csv"
+            )
+            output_csv, _ = QFileDialog.getSaveFileName(
+                self.dlg,
+                "Save Locate Results As",
+                default_output,
+                "CSV files (*.csv)",
+            )
+            if not output_csv:
+                return
+            if not output_csv.lower().endswith(".csv"):
+                output_csv += ".csv"
+
             result = self.show_geocode_fabric(populate_table=False)
             if not result:
                 return
+        else:
+            output_csv = None
 
         if not csv_filepath or not selected_vintage or not combined_data_values:
             self.dlg.infoBox.setText("Run a locate search with a CSV file before exporting results.")
@@ -170,7 +196,7 @@ class CQAFabric:
             QApplication.processEvents()
             return
 
-        self.load_csv_result("locations", selected_vintage, combined_data_values, csv_filepath)
+        self.load_csv_result(combined_data_values, output_csv)
 
     def _update_locate_save_button(self, batch_run):
         self.dlg.saveBtn.setEnabled(batch_run)
@@ -909,17 +935,13 @@ class CQAFabric:
             QApplication.processEvents()
             
             
-    def load_csv_result(self,selected_layer,selected_vintage,combined_data_values,csv_filepath):
+    def load_csv_result(self, combined_data_values, csvoutput_file):
             self.dlg.progressBar.resetFormat()
-            if not csv_filepath or not combined_data_values:
+            if not csvoutput_file or not combined_data_values:
                 self.dlg.infoBox.setText("Locate results are not ready to export yet.")
                 self.dlg.infoBox.setStyleSheet("color: red;")
                 QApplication.processEvents()
                 return
-            # get csv file path without extension
-            csv_filepath_without_extension = os.path.splitext(csv_filepath)[0]       
-            DateStamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-            csvoutput_file = csv_filepath_without_extension+ f"_{selected_layer}{selected_vintage}_{DateStamp}.csv"     
 
             with open(csvoutput_file, mode="w", newline="") as file:
             # Get all keys from the first inner dictionary (assuming all dictionaries have the same structure)
@@ -1510,6 +1532,8 @@ class CQAFabric:
         headers = None
         selected_vintage = self.dlg.comboBox_vintage.currentText()  
         selected_layer = "locations"
+        preview_limit = 500 if populate_table and self.dlg.checkBox_CSV.isChecked() else None
+        preview_truncated = False
         n = 0
         if self.dlg.AddrButton.isChecked():
             coordinates_data = []
@@ -1527,7 +1551,10 @@ class CQAFabric:
                     addresstexts = []
                     with open(self.dlg.mQgsFileWidget.filePath(), newline='', encoding='utf-8') as csvfile:
                         reader = csv.DictReader(csvfile)
-                        for row in reader:
+                        for row_number, row in enumerate(reader):
+                            if preview_limit is not None and row_number >= preview_limit:
+                                preview_truncated = True
+                                break
                             # read columnname regardless of case
                             address_col = next((col for col in row.keys() if col.lower() == 'address'), None)
                             sourcekey_col = next((col for col in row.keys() if col.lower() == 'sourcekey'), None)
@@ -1546,15 +1573,24 @@ class CQAFabric:
                     QApplication.processEvents()
                     return
             data_1 = []
-            for addresstext in addresstexts:
-                for sourcekey, address in addresstext.items():
-                    data = matchautocomplete(apikey, address, selected_vintage)
-                    if data: 
-                        for key, value in data.items():
-                            coordinates = None
-                            if key == "locations":
-                                for item in value:
-                                    data_1.append({"uuid":item['uuid'],"location_id":item['location_id'],"Latitude":item['latitude'],"Longitude":item['longitude'],"sourcekey": sourcekey})
+            if self.dlg.checkBox_CSV.isChecked():
+                address_data = [
+                    {"sourcekey": sourcekey, "text": address}
+                    for addresstext in addresstexts
+                    for sourcekey, address in addresstext.items()
+                ]
+                match_results = matchfabric(apikey, selected_vintage, address_data) or []
+                for match_result in match_results:
+                    sourcekey = match_result.get("sourcekey")
+                    for item in match_result.get("locations") or []:
+                        data_1.append({"uuid":item['uuid'],"location_id":item['location_id'],"Latitude":item['latitude'],"Longitude":item['longitude'],"sourcekey": sourcekey})
+            else:
+                for addresstext in addresstexts:
+                    for sourcekey, address in addresstext.items():
+                        data = matchautocomplete(apikey, address, selected_vintage)
+                        if data:
+                            for item in data.get("locations") or []:
+                                data_1.append({"uuid":item['uuid'],"location_id":item['location_id'],"Latitude":item['latitude'],"Longitude":item['longitude'],"sourcekey": sourcekey})
                           
                                     
 
@@ -1588,7 +1624,10 @@ class CQAFabric:
 
                     with open(self.dlg.mQgsFileWidget.filePath(), newline='', encoding='utf-8') as csvfile:
                         reader = csv.DictReader(csvfile)
-                        for row in reader:
+                        for row_number, row in enumerate(reader):
+                            if preview_limit is not None and row_number >= preview_limit:
+                                preview_truncated = True
+                                break
                             lat_col = next((col for col in row.keys() if col.lower() == 'latitude'), None)
                             lon_col = next((col for col in row.keys() if col.lower() == 'longitude'), None)
                             sourcekey_col = next((col for col in row.keys() if col.lower() == 'sourcekey'), None)
@@ -1612,7 +1651,7 @@ class CQAFabric:
                     return
         
         
-            data_1 = locatefabric(apikey, selected_vintage, coordinates_data)
+            data_1 = locatefabric(apikey, selected_vintage, coordinates_data, neardistancem=100)
         if not data_1:
             self.dlg.saveBtn.setEnabled(False)
             self.dlg.saveBtn.setStyleSheet("color: gray;")
@@ -1628,7 +1667,7 @@ class CQAFabric:
                 from collections import defaultdict
                 locationid_key = defaultdict(list)
                 for item in data_1:
-                    if isinstance(item, dict):
+                    if isinstance(item, dict) and item.get('location_id') is not None:
                         locationid_key[item.get('location_id')].append(item.get('sourcekey'))
 
                 # Example of locationid_key after processing data_1:
@@ -1643,14 +1682,54 @@ class CQAFabric:
                 #     'loc2': ['B']
                 # }
                 if locationid_key:
-                    data_2 = translatefabric(apikey, selected_vintage, list(locationid_key.keys()), None, None)
-                        
-                    ids = [item.get('uuid') for item in data_2 if isinstance(item, dict)]
+                    ids = list(dict.fromkeys(
+                        item.get('uuid')
+                        for item in data_1
+                        if isinstance(item, dict) and item.get('uuid')
+                    ))
+                    missing_location_ids = list(dict.fromkeys(
+                        item.get('location_id')
+                        for item in data_1
+                        if isinstance(item, dict)
+                        and item.get('location_id') is not None
+                        and not item.get('uuid')
+                    ))
+                    if missing_location_ids:
+                        translated_data = translatefabric(
+                            apikey,
+                            selected_vintage,
+                            missing_location_ids,
+                            None,
+                            None,
+                        ) or []
+                        ids.extend(
+                            item.get('uuid')
+                            for item in translated_data
+                            if isinstance(item, dict) and item.get('uuid')
+                        )
+                        ids = list(dict.fromkeys(ids))
+
+                    if not ids:
+                        self.dlg.infoBox.setText("Unable to retrieve UUIDs needed to attach attributes.")
+                        self.dlg.infoBox.setStyleSheet("color: red;")
+                        QApplication.processEvents()
+                        return
+
                     fieldnames = getfieldsinfo(selected_vintage, selected_layer, apikey)
+                    if not fieldnames:
+                        self.dlg.infoBox.setText("Unable to retrieve Fabric field metadata. Please wait and try again.")
+                        self.dlg.infoBox.setStyleSheet("color: red;")
+                        QApplication.processEvents()
+                        return
                     displayname_dict = getfieldsdisplayname(selected_vintage,selected_layer,apikey)
                     ordered_keys = list(displayname_dict.keys())
                     ordered_keys.reverse()
-                    combined_data_values = attach(selected_vintage,selected_layer, ids, fieldnames, apikey)
+                    combined_data_values = attach(selected_vintage,selected_layer, ids, fieldnames, apikey) or []
+                    if not combined_data_values:
+                        self.dlg.infoBox.setText("No attribute records were returned by the API.")
+                        self.dlg.infoBox.setStyleSheet("color: red;")
+                        QApplication.processEvents()
+                        return
                     data_add = []
                     for item in combined_data_values:
                         if len(locationid_key.get(item['location_id'])) > 1:
@@ -1706,8 +1785,8 @@ class CQAFabric:
                 for row in range(model.rowCount()):
                     self.dlg.tableResult.setRowHeight(row, 20)
             result_message = str(len(combined_data_values)) + " ids data retrieved successfully. Ready to Export."
-            if populate_table and self.dlg.checkBox_CSV.isChecked() and len(combined_data_values) > 500:
-                result_message += " Showing the first 500 records."
+            if preview_truncated:
+                result_message += " Showing results for the first 500 input records."
             self.dlg.infoBox.setText(result_message)
             self.dlg.infoBox.setStyleSheet("color: green;")
             QApplication.processEvents()

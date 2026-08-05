@@ -4,6 +4,7 @@ import urllib.request
 import urllib.parse
 import os
 import sys
+import time
 from PyQt5.QtCore import QUrl
 from PyQt5.QtNetwork import QNetworkRequest
 
@@ -19,6 +20,7 @@ from qgis.core import QgsApplication, QgsAuthMethodConfig, QgsDataSourceUri, Qgs
 
 
 baseuri = "https://api.costquest.com/"
+_fields_metadata_cache = {}
 
 
 def is_point_fabric_layer(layer_name):
@@ -241,52 +243,60 @@ def individualdata(selected_vintage,selected_layer,apikey,uuid):
         print("Failed to fetch vintages. HTTP Code:", response.getcode())
 
 
-def getfieldsinfo(vintage:str,layer:str,apikey):
-        if not vintage or not layer: 
+def _getfieldsmetadata(vintage, layer, apikey):
+    if not vintage or not layer:
+        return []
+
+    cache_key = (apikey, vintage, layer)
+    if cache_key in _fields_metadata_cache:
+        return _fields_metadata_cache[cache_key]
+
+    url = f"https://api.costquest.com/fabric/{vintage}/fields/{layer}"
+    headers = {'Cache-Control': 'no-cache', 'apikey': apikey}
+    for attempt in range(4):
+        try:
+            response = requests.get(url, headers=headers, timeout=60)
+            if response.status_code == 200:
+                data = response.json()
+                _fields_metadata_cache[cache_key] = data
+                return data
+            if response.status_code == 429 and attempt < 3:
+                retry_after = response.headers.get('Retry-After', '5')
+                try:
+                    delay = max(1, int(retry_after))
+                except (TypeError, ValueError):
+                    delay = 5
+                time.sleep(min(delay, 60))
+                continue
+            print(f"Failed to fetch fields information. HTTP Code: {response.status_code}")
             return []
-        url = f"https://api.costquest.com/fabric/{vintage}/fields/{layer}"
-
-        hdr ={
-        # Request headers
-        'Cache-Control': 'no-cache',
-        'apikey': apikey,
-        }
-
-        req = urllib.request.Request(url, headers=hdr)
-
-        req.get_method = lambda: 'GET'
-        response = urllib.request.urlopen(req)
-        if response.getcode() == 200:
-            data = json.loads(response.read())
-            fieldnames = [item.get('fieldname') for item in data if isinstance(item, dict)]
-            return fieldnames
-        else:
-            print("Failed to fetch fields information. HTTP Code:", response.getcode())
+        except requests.RequestException as exception:
+            if attempt == 3:
+                print(exception)
+                return []
+            time.sleep(2 ** attempt)
+    return []
 
 
-def getfieldsdisplayname(vintage:str,layer:str,apikey):   
-        if not vintage or not layer: 
-            return []  
-        url = f"https://api.costquest.com/fabric/{vintage}/fields/{layer}"
+def getfieldsinfo(vintage: str, layer: str, apikey):
+    return [
+        item.get('fieldname')
+        for item in _getfieldsmetadata(vintage, layer, apikey)
+        if isinstance(item, dict) and item.get('fieldname')
+    ]
 
-        hdr ={
-        # Request headers
-        'Cache-Control': 'no-cache',
-        'apikey': apikey,
-        }
 
-        req = urllib.request.Request(url, headers=hdr)
-
-        req.get_method = lambda: 'GET'
-        response = urllib.request.urlopen(req)
-        if response.getcode() == 200:
-            data = json.loads(response.read()) 
-            # sort the data by listorder
-            data.sort(key=lambda x: x.get('listorder') or 0, reverse=True)
-            displynames_dict = {item.get('fieldname'): item.get('displayname') if item.get('displayname') else item.get('fieldname')  for item in data if isinstance(item, dict)}
-            return displynames_dict
-        else:
-            print("Failed to fetch fieldname. HTTP Code:", response.getcode())
+def getfieldsdisplayname(vintage: str, layer: str, apikey):
+    data = [
+        item for item in _getfieldsmetadata(vintage, layer, apikey)
+        if isinstance(item, dict)
+    ]
+    data.sort(key=lambda item: item.get('listorder') or 0, reverse=True)
+    return {
+        item.get('fieldname'): item.get('displayname') or item.get('fieldname')
+        for item in data
+        if isinstance(item, dict) and item.get('fieldname')
+    }
 
 
 
@@ -360,6 +370,16 @@ def matchautocomplete(apikey, address,vintage):
     except Exception as e:
         print(e)
         return None
+
+
+def matchfabric(apikey, vintage, sourcedata):
+    """Match address records using the API client's chunking and retry logic."""
+    try:
+        with cqazapi_pytools.cqazapipytools(apikey) as cp:
+            return cp.match(vintage, sourcedata)
+    except Exception as e:
+        print(e)
+        return None
     
 
 def matchstructured(apikey, house_number,road, city, state,  postcode, vintage):
@@ -386,7 +406,7 @@ def matchstructured(apikey, house_number,road, city, state,  postcode, vintage):
         print(e)
         return None
     
-def locatefabric(apikey, vintage, sourcedata):
+def locatefabric(apikey, vintage, sourcedata, neardistancem=None):
     ''' example: 
     data = [{
     "latitude": 36.66057141,
@@ -399,48 +419,11 @@ def locatefabric(apikey, vintage, sourcedata):
     }]
     '''
     try:
-        url = f"https://api.costquest.com/fabricext/{vintage}/locate"
-
-        hdr ={
-        # Request headers
-        'Cache-Control': 'no-cache',
-        'apikey': apikey,
-        }
-        data = json.dumps(sourcedata)
-        req = urllib.request.Request(url, headers=hdr, data = bytes(data.encode("utf-8")))
-
-        req.get_method = lambda: 'POST'
-        response = urllib.request.urlopen(req)
-        if response.getcode() == 200:
-            result = json.loads(response.read())
-            return result
-
-               
+        with cqazapi_pytools.cqazapipytools(apikey) as cp:
+            return cp.locate(vintage, sourcedata, neardistancem=neardistancem)
     except Exception as e:
-        try:
-            result = []
-            for dic in sourcedata:
-                query = urllib.parse.urlencode({
-                    "latitude": dic["latitude"],
-                    "longitude": dic["longitude"],
-                })
-                url = f"https://api.costquest.com/fabricext/{vintage}/locate?{query}"
-                req = urllib.request.Request(url, headers=hdr)
-
-                req.get_method = lambda: 'GET'
-                response = urllib.request.urlopen(req)
-                if response.getcode() == 200:
-                    result_temp = json.loads(response.read())
-                    # update the sourcekey in the result_temp
-                    for dic_temp in result_temp:
-                        dic_temp["sourcekey"] = dic["sourcekey"]
-                    result.extend(result_temp)
-                else:
-                    result.append({"latitude": None, "distancem": None, "longitude": None, "matchtype": None, "sourcekey": dic["sourcekey"], "location_id": None})
-            return result
-        except Exception as e:
-            print(e)
-            return None
+        print(e)
+        return None
     
     '''example result = [{
         "latitude": 36.66057141,
