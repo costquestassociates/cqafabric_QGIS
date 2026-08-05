@@ -1691,7 +1691,11 @@ class CQAFabric:
                 return
 
             if populate_table:
-                self.SetDataModel(model, combined_data_values,selected_vintage,selected_layer)
+                display_data = combined_data_values
+                if self.dlg.checkBox_CSV.isChecked():
+                    display_data = combined_data_values[:500]
+
+                self.SetDataModel(model, display_data,selected_vintage,selected_layer)
 
                 # Set the model to the table view
                 self.dlg.tableResult.setModel(model)
@@ -1701,7 +1705,10 @@ class CQAFabric:
                 # Set the row height to fit the content
                 for row in range(model.rowCount()):
                     self.dlg.tableResult.setRowHeight(row, 20)
-            self.dlg.infoBox.setText(str(len(combined_data_values)) + " ids data retrieved successfully. Ready to Export.")
+            result_message = str(len(combined_data_values)) + " ids data retrieved successfully. Ready to Export."
+            if populate_table and self.dlg.checkBox_CSV.isChecked() and len(combined_data_values) > 500:
+                result_message += " Showing the first 500 records."
+            self.dlg.infoBox.setText(result_message)
             self.dlg.infoBox.setStyleSheet("color: green;")
             QApplication.processEvents()
             if csv_filepath:
