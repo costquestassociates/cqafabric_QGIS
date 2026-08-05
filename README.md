@@ -1,11 +1,18 @@
-[![GitHub release](https://img.shields.io/github/v/release/hchen-cqa/cqafabric_QGIS)](https://github.com/hchen-cqa/cqafabric_QGIS/releases)
+[![GitHub release](https://img.shields.io/github/v/release/costquestassociates/cqafabric_QGIS)](https://github.com/costquestassociates/cqafabric_QGIS/releases)
 <h1>cqafabric</h1>
 
 &nbsp;&nbsp;&nbsp;&nbsp;![cqafabric](icons/Fabric-3_CircleBG_Patina-100.png)
 
 <h2>Installation</h2>
-    <li><a href="https://github.com/costquestassociates/cqafabric_QGIS/releases/latest" target="_blank">Download</a> latest release zip file from github</li>
-	<li>In QGIS, open <code>Plugins &gt; Manage and Install Plugins... &gt; Install from ZIP</code></li>	
+
+Download the ZIP that matches your QGIS major version:
+
+- **QGIS 3.x:** [Download `cqafabric_qgis-qgis3.zip`](https://github.com/costquestassociates/cqafabric_QGIS/releases/latest/download/cqafabric_qgis-qgis3.zip)
+- **QGIS 4.x:** [Download `cqafabric_qgis-qgis4.zip`](https://github.com/costquestassociates/cqafabric_QGIS/releases/latest/download/cqafabric_qgis-qgis4.zip)
+
+[View all releases](https://github.com/costquestassociates/cqafabric_QGIS/releases)
+
+Both ZIPs are platform-independent and work on macOS (Apple silicon and Intel), Windows, and Linux. In QGIS, open <code>Plugins &gt; Manage and Install Plugins... &gt; Install from ZIP</code>, then select the appropriate file.
 
 <h2>User Authentication</h2>
 
@@ -46,7 +53,5 @@ QGIS plugin to use CQA Fabric APIs.</br>
     ![image](https://github.com/user-attachments/assets/73bdb951-989d-467e-9b1d-aedb370079af)
     </br>
     </br></li>
-
-
 
 

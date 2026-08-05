@@ -23,9 +23,8 @@
 """
 from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication, Qt, QPoint
 from qgis.PyQt.QtGui import QIcon, QColor, QCursor
-from qgis.PyQt.QtWidgets import QAction, QToolButton, QMenu
-from PyQt5.QtWidgets import QMessageBox, QVBoxLayout, QLabel, QWidget, QPushButton, QLineEdit, QApplication, QFileDialog
-from PyQt5.QtGui import QStandardItemModel, QStandardItem
+from qgis.PyQt.QtWidgets import QAction, QToolButton, QMenu, QMessageBox, QVBoxLayout, QLabel, QWidget, QPushButton, QLineEdit, QApplication
+from qgis.PyQt.QtGui import QStandardItemModel, QStandardItem
 from qgis.core import QgsProject, QgsVectorLayer, Qgis, QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsSelectionContext, QgsFeature, QgsPointXY, QgsGeometry, QgsSettings, QgsMapLayer, QgsJsonExporter, QgsTask, QgsApplication, QgsFeatureRequest
 import processing
 from qgis.gui import QgsMapToolEmitPoint, QgsHighlight, QgsVertexMarker
@@ -46,6 +45,12 @@ import time
 import functools
 import html
 
+
+# Qt5 exposes many enums directly on their classes, while Qt6 nests them.
+QT_ITEM_DATA_ROLE = getattr(Qt, "ItemDataRole", Qt)
+QT_WINDOW_TYPE = getattr(Qt, "WindowType", Qt)
+QT_LINE_EDIT_ECHO_MODE = getattr(QLineEdit, "EchoMode", QLineEdit)
+QT_MESSAGE_BOX_STANDARD_BUTTON = getattr(QMessageBox, "StandardButton", QMessageBox)
 
 baseuri = "https://api.costquest.com/"
 collect_calls = 0
@@ -715,7 +720,7 @@ class CQAFabric:
         # Add input fields for API key
         self.auth_dialog.label_api_key = QLabel("Please enter your API key:")
         self.auth_dialog.lineEdit_api_key = QLineEdit()
-        self.auth_dialog.lineEdit_api_key.setEchoMode(QLineEdit.Password)
+        self.auth_dialog.lineEdit_api_key.setEchoMode(QT_LINE_EDIT_ECHO_MODE.Password)
 
         # Add a button to save the API key
         self.auth_dialog.button_save = QPushButton("Save")
@@ -862,7 +867,9 @@ class CQAFabric:
         # if dlg is closed, uncheck the action
         
         self.dlg = RetrieveDataDialog()
-        self.dlg.setWindowFlags(Qt.WindowMinimizeButtonHint | Qt.WindowCloseButtonHint)
+        self.dlg.setWindowFlags(
+            QT_WINDOW_TYPE.WindowMinimizeButtonHint | QT_WINDOW_TYPE.WindowCloseButtonHint
+        )
         self.dlg.setFixedSize(self.dlg.size())
         self.dlg.saveBtn.setEnabled(False)
         self.dlg.saveBtn.setStyleSheet("color: gray;")
@@ -906,10 +913,10 @@ class CQAFabric:
                     self.dlg,
                     "Cancel Task?",
                     "There is a background task running. Do you want to cancel it before closing?",
-                    QMessageBox.Yes | QMessageBox.No,
-                    QMessageBox.No
+                    QT_MESSAGE_BOX_STANDARD_BUTTON.Yes | QT_MESSAGE_BOX_STANDARD_BUTTON.No,
+                    QT_MESSAGE_BOX_STANDARD_BUTTON.No
                 )
-                if reply == QMessageBox.Yes:
+                if reply == QT_MESSAGE_BOX_STANDARD_BUTTON.Yes:
                     for task in running_tasks:
                         task.cancel()
                     self._reset_retrieve_result_state()
@@ -1076,7 +1083,7 @@ class CQAFabric:
             selected_fields = []
             for i in range(self.dlg.selectedFeaturesLw.count()):
                 item = self.dlg.selectedFeaturesLw.item(i)
-                retrieved_data = item.data(QtCore.Qt.UserRole)
+                retrieved_data = item.data(QT_ITEM_DATA_ROLE.UserRole)
                 selected_fields.append(retrieved_data)
             if len(selected_fields) == 0:
                 self.dlg.setDisabled(False)

@@ -19,16 +19,36 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
-      - name: Create zip (single top-level folder)
+      - name: Create QGIS 3 and QGIS 4 ZIPs
         run: |
           rm -rf package
-          mkdir -p package/cqafabric_qgis
-          rsync -a --exclude ".git" --exclude "package" ./ package/cqafabric_qgis/
-          (cd package && zip -r ../cqafabric_qgis.zip cqafabric_qgis)
+
+          for qgis_version in qgis3 qgis4; do
+            mkdir -p "package/${qgis_version}/cqafabric_qgis"
+            rsync -a \
+              --exclude ".git" \
+              --exclude ".github" \
+              --exclude "package" \
+              --exclude "*.zip" \
+              --exclude "*.code-workspace" \
+              ./ "package/${qgis_version}/cqafabric_qgis/"
+          done
+
+          sed \
+            -e 's/^qgisMinimumVersion=.*/qgisMinimumVersion=3.0/' \
+            -e 's/^qgisMaximumVersion=.*/qgisMaximumVersion=3.99/' \
+            package/qgis3/cqafabric_qgis/metadata.txt \
+            > package/qgis3/cqafabric_qgis/metadata.txt.tmp
+          mv package/qgis3/cqafabric_qgis/metadata.txt.tmp package/qgis3/cqafabric_qgis/metadata.txt
+
+          (cd package/qgis3 && zip -r ../../cqafabric_qgis-qgis3.zip cqafabric_qgis)
+          (cd package/qgis4 && zip -r ../../cqafabric_qgis-qgis4.zip cqafabric_qgis)
 
       - name: Create release and upload zip
         uses: softprops/action-gh-release@v2
         with:
           tag_name: release-${{ github.run_number }}
           name: Release ${{ github.run_number }}
-          files: cqafabric_qgis.zip
+          files: |
+            cqafabric_qgis-qgis3.zip
+            cqafabric_qgis-qgis4.zip
