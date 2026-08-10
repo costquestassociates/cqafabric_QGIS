@@ -1633,6 +1633,7 @@ class CQAFabric:
         layer_list = vintages
         self.dlg.comboBox_vintage.clear()
         self.dlg.comboBox_vintage.addItems(layer_list)
+        self.dlg.restoreVintage()
         self.dlg.setParent(self.iface.mainWindow(), self.dlg.windowFlags())
         self.dlg.show()
 
