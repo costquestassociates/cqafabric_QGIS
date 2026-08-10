@@ -176,12 +176,9 @@ class CQAFabric:
 
     def _save_locate_result(self):
         if self.dlg.checkBox_CSV.isChecked():
-            input_csv = self.dlg.mQgsFileWidget.filePath()
-            if not input_csv:
-                self.dlg.infoBox.setText("CSV file is required for this operation.")
-                self.dlg.infoBox.setStyleSheet("color: red;")
-                QApplication.processEvents()
+            if not self._validate_locate_batch_csv():
                 return
+            input_csv = self.dlg.mQgsFileWidget.filePath()
 
             vintage = self.dlg.comboBox_vintage.currentText()
             timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
@@ -217,6 +214,21 @@ class CQAFabric:
     def _update_locate_save_button(self, batch_run):
         self.dlg.saveBtn.setEnabled(batch_run)
         self.dlg.saveBtn.setStyleSheet("color: green;" if batch_run else "color: gray;")
+
+    def _validate_locate_batch_csv(self):
+        """Report whether the selected batch CSV is an existing file."""
+        input_csv = self.dlg.mQgsFileWidget.filePath().strip()
+        if not input_csv:
+            message = "CSV file is required for this operation."
+        elif not os.path.isfile(input_csv):
+            message = "The selected CSV file does not exist."
+        else:
+            return True
+
+        self.dlg.infoBox.setText(message)
+        self.dlg.infoBox.setStyleSheet("color: red;")
+        QApplication.processEvents()
+        return False
 
     def _clear_identify_marker(self):
         if self.vertex_marker:
@@ -1729,6 +1741,9 @@ class CQAFabric:
 
         self._clear_locate_markers()
         csv_filepath = None  # Ensure csv_filepath is always defined
+
+        if self.dlg.checkBox_CSV.isChecked() and not self._validate_locate_batch_csv():
+            return
 
         self.dlg.progressBar.reset()
         model = QStandardItemModel()
