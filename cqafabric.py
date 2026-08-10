@@ -25,7 +25,7 @@ from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication, Qt, QPoin
 from qgis.PyQt.QtGui import QIcon, QColor, QCursor
 from qgis.PyQt.QtWidgets import QAction, QToolButton, QMenu, QMessageBox, QVBoxLayout, QLabel, QWidget, QPushButton, QLineEdit, QApplication
 from qgis.PyQt.QtGui import QStandardItemModel, QStandardItem
-from qgis.core import QgsProject, QgsVectorLayer, Qgis, QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsSelectionContext, QgsFeature, QgsPointXY, QgsGeometry, QgsSettings, QgsMapLayer, QgsJsonExporter, QgsTask, QgsApplication, QgsFeatureRequest
+from qgis.core import QgsProject, QgsVectorLayer, Qgis, QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsSelectionContext, QgsFeature, QgsPointXY, QgsGeometry, QgsRectangle, QgsSettings, QgsMapLayer, QgsJsonExporter, QgsTask, QgsApplication, QgsFeatureRequest
 import processing
 from qgis.gui import QgsMapToolEmitPoint, QgsHighlight, QgsVertexMarker
 from .generalfunctions import *
@@ -85,6 +85,7 @@ class CQAFabric:
         self.identify_highlights = []
         self.identify_records = []
         self.identify_message_item = None
+        self.locate_markers = []
 
         # initialize plugin directory
         self.plugin_dir = os.path.dirname(__file__)
@@ -149,6 +150,14 @@ class CQAFabric:
         selected_vintage = ""
         combined_data_values = []
         csv_filepath = None
+        self._clear_locate_markers()
+
+    def _clear_locate_markers(self):
+        canvas = self.iface.mapCanvas()
+        for marker in self.locate_markers:
+            if marker:
+                canvas.scene().removeItem(marker)
+        self.locate_markers = []
 
     def _save_retrieve_result(self):
         if vector_tile_layer is None or not define_layer_name or not selected_layer or not selected_vintage or not combined_data_values:
@@ -812,6 +821,7 @@ class CQAFabric:
             return
         self._close_identify_popup()
         self._clear_identify_visuals()
+        self._clear_locate_markers()
         self._close_active_dialog()
         self.iface.pluginMenu().removeAction(self.menu.menuAction())
         self.toolButton.deleteLater()
@@ -1478,6 +1488,74 @@ class CQAFabric:
         self._reset_locate_result_state()
         self.enable_all_actions()
 
+    def _zoom_to_locate_results(self, results):
+        """Zoom the map to point results returned by a single locate request."""
+        canvas = self.iface.mapCanvas()
+        transform = QgsCoordinateTransform(
+            QgsCoordinateReferenceSystem("EPSG:4326"),
+            canvas.mapSettings().destinationCrs(),
+            QgsProject.instance(),
+        )
+        points = []
+        for result in results:
+            latitude = result.get("Latitude", result.get("latitude"))
+            longitude = result.get("Longitude", result.get("longitude"))
+            if latitude is None or longitude is None:
+                continue
+            try:
+                points.append(transform.transform(QgsPointXY(
+                    float(longitude), float(latitude)
+                )))
+            except Exception:
+                continue
+
+        if not points:
+            return
+        if len(points) == 1:
+            canvas.setCenter(points[0])
+            canvas.zoomScale(2500)
+        else:
+            extent = QgsRectangle(points[0], points[0])
+            for point in points[1:]:
+                extent.combineExtentWith(point.x(), point.y())
+            extent_size = max(extent.width(), extent.height())
+            if extent_size == 0:
+                canvas.setCenter(points[0])
+                canvas.zoomScale(2500)
+            else:
+                extent.grow(extent_size * 0.1)
+                canvas.setExtent(extent)
+        canvas.refresh()
+
+    def _highlight_locate_results(self, results):
+        """Mark point results returned by a single locate request."""
+        self._clear_locate_markers()
+        canvas = self.iface.mapCanvas()
+        transform = QgsCoordinateTransform(
+            QgsCoordinateReferenceSystem("EPSG:4326"),
+            canvas.mapSettings().destinationCrs(),
+            QgsProject.instance(),
+        )
+        for result in results:
+            latitude = result.get("Latitude", result.get("latitude"))
+            longitude = result.get("Longitude", result.get("longitude"))
+            if latitude is None or longitude is None:
+                continue
+            try:
+                point = transform.transform(QgsPointXY(
+                    float(longitude), float(latitude)
+                ))
+            except Exception:
+                continue
+            marker = QgsVertexMarker(canvas)
+            marker.setCenter(point)
+            marker.setColor(QColor(255, 0, 0))
+            marker.setFillColor(QColor(255, 255, 0))
+            marker.setIconSize(14)
+            marker.setIconType(QgsVertexMarker.ICON_CIRCLE)
+            marker.setPenWidth(3)
+            self.locate_markers.append(marker)
+
     def _visible_fabric_layers(self):
         layers = []
         for layer in self.iface.mapCanvas().layers():
@@ -1649,6 +1727,7 @@ class CQAFabric:
         global combined_data_values
         global csv_filepath
 
+        self._clear_locate_markers()
         csv_filepath = None  # Ensure csv_filepath is always defined
 
         self.dlg.progressBar.reset()
@@ -1892,6 +1971,10 @@ class CQAFabric:
             if not combined_data_values:
                 self.dlg.tableResult.setModel(model)
                 return
+
+            if not self.dlg.checkBox_CSV.isChecked():
+                self._zoom_to_locate_results(combined_data_values)
+                self._highlight_locate_results(combined_data_values)
 
             if populate_table:
                 display_data = combined_data_values

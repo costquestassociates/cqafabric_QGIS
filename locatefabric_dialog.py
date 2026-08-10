@@ -26,6 +26,7 @@ import os
 
 from qgis.PyQt import uic
 from qgis.PyQt import QtWidgets
+from qgis.core import QgsSettings
 
 # This loads your .ui file so that PyQt can populate your plugin with the elements from Qt Designer
 FORM_CLASS, _ = uic.loadUiType(os.path.join(
@@ -33,6 +34,8 @@ FORM_CLASS, _ = uic.loadUiType(os.path.join(
 
 
 class LocateFabricDialog(QtWidgets.QDialog, FORM_CLASS):
+    SETTINGS_PREFIX = "cqafabric/locate_fabric"
+
     def __init__(self, parent=None):
         """Constructor."""
         super(LocateFabricDialog, self).__init__(parent)
@@ -43,16 +46,56 @@ class LocateFabricDialog(QtWidgets.QDialog, FORM_CLASS):
         # #widgets-and-dialogs-with-auto-connect
         self.setupUi(self)
         self._initConnections()
-        self.checkBox_CSV.setChecked(False)
-        self.infoBox_input.setVisible(True)
-        self.infoBox_input.setEnabled(True)
-        self.mQgsFileWidget.setVisible(False)
-        self.mQgsFileWidget.setEnabled(False)
+        self._restoreState()
+        self.finished.connect(self._saveState)
     
     def _initConnections(self):
         self.checkBox_CSV.toggled.connect(self._onCSVChecked)
         self.AddrButton.toggled.connect(self._onBtnChecked)
         self.CoorButton.toggled.connect(self._onBtnChecked)
+
+    def _restoreState(self):
+        """Restore the choices from the previous Locate Fabric session."""
+        settings = QgsSettings()
+        locate_type = settings.value(
+            f"{self.SETTINGS_PREFIX}/locate_type", "coordinate", type=str
+        )
+        self.AddrButton.setChecked(locate_type == "address")
+        self.CoorButton.setChecked(locate_type != "address")
+        self.checkBox_CSV.setChecked(settings.value(
+            f"{self.SETTINGS_PREFIX}/batch_run", False, type=bool
+        ))
+        self.checkBox_attribute.setChecked(settings.value(
+            f"{self.SETTINGS_PREFIX}/show_attribute", False, type=bool
+        ))
+        self._onCSVChecked()
+
+    def restoreVintage(self):
+        """Restore the vintage after the caller has populated its list."""
+        vintage = QgsSettings().value(
+            f"{self.SETTINGS_PREFIX}/vintage", "", type=str
+        )
+        index = self.comboBox_vintage.findText(vintage)
+        if index >= 0:
+            self.comboBox_vintage.setCurrentIndex(index)
+
+    def _saveState(self, _result=None):
+        """Save persistent choices whenever the dialog closes."""
+        settings = QgsSettings()
+        settings.setValue(
+            f"{self.SETTINGS_PREFIX}/locate_type",
+            "address" if self.AddrButton.isChecked() else "coordinate",
+        )
+        settings.setValue(
+            f"{self.SETTINGS_PREFIX}/batch_run", self.checkBox_CSV.isChecked()
+        )
+        settings.setValue(
+            f"{self.SETTINGS_PREFIX}/show_attribute",
+            self.checkBox_attribute.isChecked(),
+        )
+        settings.setValue(
+            f"{self.SETTINGS_PREFIX}/vintage", self.comboBox_vintage.currentText()
+        )
     
     def _onCSVChecked(self):
         """
