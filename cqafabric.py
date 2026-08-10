@@ -86,6 +86,7 @@ class CQAFabric:
         self.identify_records = []
         self.identify_message_item = None
         self.locate_markers = []
+        self.locate_display_results = []
 
         # initialize plugin directory
         self.plugin_dir = os.path.dirname(__file__)
@@ -150,6 +151,7 @@ class CQAFabric:
         selected_vintage = ""
         combined_data_values = []
         csv_filepath = None
+        self.locate_display_results = []
         self._clear_locate_markers()
 
     def _clear_locate_markers(self):
@@ -1522,7 +1524,7 @@ class CQAFabric:
                 continue
 
         if not points:
-            return
+            return False
         if len(points) == 1:
             canvas.setCenter(points[0])
             canvas.zoomScale(2500)
@@ -1538,6 +1540,7 @@ class CQAFabric:
                 extent.grow(extent_size * 0.1)
                 canvas.setExtent(extent)
         canvas.refresh()
+        return True
 
     def _highlight_locate_results(self, results):
         """Mark point results returned by a single locate request."""
@@ -1567,6 +1570,24 @@ class CQAFabric:
             marker.setIconType(QgsVertexMarker.ICON_CIRCLE)
             marker.setPenWidth(3)
             self.locate_markers.append(marker)
+
+    def _on_locate_result_clicked(self, index):
+        """Zoom to and highlight a clicked batch-result row."""
+        if not index.isValid():
+            return
+        row = index.row()
+        result = index.sibling(row, 0).data(QT_ITEM_DATA_ROLE.UserRole)
+        if not isinstance(result, dict) and 0 <= row < len(self.locate_display_results):
+            result = self.locate_display_results[row]
+        if not isinstance(result, dict):
+            return
+        if not self._zoom_to_locate_results([result]):
+            self.dlg.infoBox.setText(
+                "The selected result does not contain valid latitude and longitude values."
+            )
+            self.dlg.infoBox.setStyleSheet("color: red;")
+            return
+        self._highlight_locate_results([result])
 
     def _visible_fabric_layers(self):
         layers = []
@@ -1730,6 +1751,7 @@ class CQAFabric:
         # if populatetableBtn is clicked, show the table with the selected features
         self.dlg.showBtn.clicked.connect(self.show_geocode_fabric)
         self.dlg.saveBtn.clicked.connect(self._save_locate_result)
+        self.dlg.tableResult.clicked.connect(self._on_locate_result_clicked)
         self.dlg.checkBox_CSV.toggled.connect(self._update_locate_save_button)
         # when dlg is closed, uncheck the action
         self.dlg.finished.connect(self._on_locate_dialog_finished)
@@ -1740,6 +1762,8 @@ class CQAFabric:
         global csv_filepath
 
         self._clear_locate_markers()
+        if populate_table:
+            self.locate_display_results = []
         csv_filepath = None  # Ensure csv_filepath is always defined
 
         if self.dlg.checkBox_CSV.isChecked() and not self._validate_locate_batch_csv():
@@ -1995,8 +2019,13 @@ class CQAFabric:
                 display_data = combined_data_values
                 if self.dlg.checkBox_CSV.isChecked():
                     display_data = combined_data_values[:500]
+                self.locate_display_results = display_data
 
                 self.SetDataModel(model, display_data,selected_vintage,selected_layer)
+                for row, result in enumerate(display_data):
+                    item = model.item(row, 0)
+                    if item is not None:
+                        item.setData(result, QT_ITEM_DATA_ROLE.UserRole)
 
                 # Set the model to the table view
                 self.dlg.tableResult.setModel(model)
