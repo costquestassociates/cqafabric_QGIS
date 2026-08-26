@@ -176,6 +176,47 @@ class CQAFabric:
             combined_data_values,
         )
 
+    def _save_retrieve_csv(self):
+        if not combined_data_values:
+            self.dlg.infoBox.setText("Populate results before saving to CSV.")
+            self.dlg.infoBox.setStyleSheet("color: red;")
+            QApplication.processEvents()
+            return
+
+        timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+        default_name = f"{define_layer_name}_{selected_layer}{selected_vintage}_{timestamp}.csv"
+        output_csv, _ = QFileDialog.getSaveFileName(
+            self.dlg,
+            "Save Retrieved Attributes As",
+            default_name,
+            "CSV files (*.csv)",
+        )
+        if not output_csv:
+            return
+        if not output_csv.lower().endswith(".csv"):
+            output_csv += ".csv"
+
+        fieldnames = []
+        for record in combined_data_values:
+            for fieldname in record:
+                if fieldname not in fieldnames:
+                    fieldnames.append(fieldname)
+
+        try:
+            with open(output_csv, mode="w", newline="", encoding="utf-8-sig") as file:
+                writer = csv.DictWriter(file, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(combined_data_values)
+        except Exception as exception:
+            self.dlg.infoBox.setText("Unable to save CSV: " + str(exception))
+            self.dlg.infoBox.setStyleSheet("color: red;")
+            QApplication.processEvents()
+            return
+
+        self.dlg.infoBox.setText(f"Retrieved attributes saved to {output_csv}")
+        self.dlg.infoBox.setStyleSheet("color: green;")
+        QApplication.processEvents()
+
     def _save_locate_result(self):
         if self.dlg.checkBox_CSV.isChecked():
             if not self._validate_locate_batch_csv():
@@ -897,6 +938,8 @@ class CQAFabric:
         self.dlg.setFixedSize(self.dlg.size())
         self.dlg.saveBtn.setEnabled(False)
         self.dlg.saveBtn.setStyleSheet("color: gray;")
+        self.dlg.saveCsvBtn.setEnabled(False)
+        self.dlg.saveCsvBtn.setStyleSheet("color: gray;")
 
         # Get the vintages from the API
         layer_list = load_vintages(apikey)
@@ -918,6 +961,7 @@ class CQAFabric:
             task.cancel()
         # if populatetableBtn is clicked, show the table with the selected features
         self.dlg.saveBtn.clicked.connect(self._save_retrieve_result)
+        self.dlg.saveCsvBtn.clicked.connect(self._save_retrieve_csv)
 
         self.dlg.populatetableBtn.clicked.connect(self.populate_table_result)
                 
@@ -1111,6 +1155,8 @@ class CQAFabric:
         start_time = time.time()  # Start timing
         self.dlg.saveBtn.setEnabled(False)
         self.dlg.saveBtn.setStyleSheet("color: gray;")
+        self.dlg.saveCsvBtn.setEnabled(False)
+        self.dlg.saveCsvBtn.setStyleSheet("color: gray;")
         self.dlg.progressBar.reset()
         self.dlg.progressBar.resetFormat()
         self.dlg.progressBar.setFormat("Loading data...")
@@ -1262,6 +1308,8 @@ class CQAFabric:
                     self.dlg.infoBox.setStyleSheet("color: green;")
                     self.dlg.saveBtn.setEnabled(True)
                     self.dlg.saveBtn.setStyleSheet("color: green;")
+                    self.dlg.saveCsvBtn.setEnabled(True)
+                    self.dlg.saveCsvBtn.setStyleSheet("color: green;")
                     self.dlg.setDisabled(False)
                     try:
                         os.remove(output_file)
@@ -1357,6 +1405,8 @@ class CQAFabric:
                     self.dlg.infoBox.setStyleSheet("color: green;")
                     self.dlg.saveBtn.setEnabled(True)
                     self.dlg.saveBtn.setStyleSheet("color: green;")
+                    self.dlg.saveCsvBtn.setEnabled(True)
+                    self.dlg.saveCsvBtn.setStyleSheet("color: green;")
                     self.dlg.setDisabled(False)
                     QApplication.processEvents()
                     return vector_tile_layer,define_layer_name, selected_layer, selected_vintage, combined_data_values
