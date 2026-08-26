@@ -920,8 +920,6 @@ class CQAFabric:
         self.dlg.saveBtn.clicked.connect(self._save_retrieve_result)
 
         self.dlg.populatetableBtn.clicked.connect(self.populate_table_result)
-
-        self.dlg.summarizetableBtn.clicked.connect(self.summarize_table_result)
                 
         def handle_dialog_finished(result):
             self.task_manager = QgsApplication.taskManager()
@@ -1418,10 +1416,6 @@ class CQAFabric:
                 row_items = [QStandardItem(str(value)) for value in row_data]
                 model.appendRow(row_items)
                 
-
-
-    def summarize_table_result(self):
-        pass
 
 
     def add_fabrictileslayer(self):
