@@ -977,14 +977,51 @@ class CQAFabric:
             self.dlg.infoBox.setStyleSheet("")    
             QApplication.processEvents()
             if selected_layer == "locations":
+                geometry_records = combined_data_values
+                missing_coordinates = [
+                    feature for feature in combined_data_values
+                    if feature.get('longitude') is None or feature.get('latitude') is None
+                ]
+                if missing_coordinates:
+                    location_ids = [feature.get('uuid') for feature in missing_coordinates if feature.get('uuid')]
+                    try:
+                        coordinate_records = attach(
+                            selected_vintage,
+                            selected_layer,
+                            location_ids,
+                            ['latitude', 'longitude'],
+                            apikey,
+                        ) or []
+                    except Exception as exception:
+                        self.dlg.infoBox.setText(
+                            "Unable to retrieve location geometry: " + str(exception)
+                        )
+                        self.dlg.infoBox.setStyleSheet("color: red;")
+                        QApplication.processEvents()
+                        return
+
+                    coordinates_by_uuid = {
+                        feature.get('uuid'): feature for feature in coordinate_records
+                    }
+                    geometry_records = []
+                    for feature in combined_data_values:
+                        geometry_feature = dict(feature)
+                        coordinates = coordinates_by_uuid.get(feature.get('uuid'), {})
+                        if geometry_feature.get('longitude') is None:
+                            geometry_feature['longitude'] = coordinates.get('longitude')
+                        if geometry_feature.get('latitude') is None:
+                            geometry_feature['latitude'] = coordinates.get('latitude')
+                        geometry_records.append(geometry_feature)
+
                 # Create a point layer using WGS 84 as the CRS
                 layer = QgsVectorLayer("Point?crs=EPSG:4326&field=uuid:string(255)", f"{resultName}", "memory")
-                # use the latitude and longitude from combined_data_values
                 layer.startEditing()
-                for feature in combined_data_values:
+                for feature in geometry_records:
+                    if feature.get('longitude') is None or feature.get('latitude') is None:
+                        continue
                     newfeature = QgsFeature()
                     # create a point geometry from latitude and longitude
-                    point_geom = QgsGeometry.fromPointXY(QgsPointXY(feature['longitude'], feature['latitude']))
+                    point_geom = QgsGeometry.fromPointXY(QgsPointXY(float(feature['longitude']), float(feature['latitude'])))
                     newfeature.setGeometry(point_geom)
                     uuid = feature['uuid']
                     newfeature.setAttributes([uuid])
