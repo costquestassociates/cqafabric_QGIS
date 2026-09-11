@@ -161,7 +161,7 @@ class IdentifyPopupDialog(QtWidgets.QDialog):
         self._currentIndex = -1
 
         self.setWindowTitle("Pop-up")
-        self.setWindowFlags(self.windowFlags() | Qt.Tool)
+        self.setWindowFlags(self.windowFlags() | QT_WINDOW_TYPE.Tool)
         self.resize(580, 460)
         self.setMinimumSize(500, 360)
         self.setStyleSheet("""

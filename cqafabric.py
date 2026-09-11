@@ -25,9 +25,9 @@ from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication, Qt, QPoin
 from qgis.PyQt.QtGui import QIcon, QColor, QCursor
 from qgis.PyQt.QtWidgets import QAction, QToolButton, QMenu, QMessageBox, QVBoxLayout, QLabel, QWidget, QPushButton, QLineEdit, QApplication, QFileDialog
 from qgis.PyQt.QtGui import QStandardItemModel, QStandardItem
-from qgis.core import QgsProject, QgsVectorLayer, Qgis, QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsSelectionContext, QgsFeature, QgsPointXY, QgsGeometry, QgsRectangle, QgsSettings, QgsMapLayer, QgsJsonExporter, QgsTask, QgsApplication, QgsFeatureRequest
+from qgis.core import QgsProject, QgsVectorLayer, Qgis, QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsSelectionContext, QgsFeature, QgsPointXY, QgsGeometry, QgsRectangle, QgsSettings, QgsMapLayer, QgsJsonExporter, QgsTask, QgsApplication, QgsFeatureRequest, QgsDataSourceUri
 import processing
-from qgis.gui import QgsMapToolEmitPoint, QgsHighlight, QgsVertexMarker
+from qgis.gui import QgsMapToolEmitPoint, QgsMapToolIdentify, QgsHighlight, QgsVertexMarker
 from .generalfunctions import *
 # Initialize Qt resources from file resources.py
 from .resources import *
@@ -44,6 +44,7 @@ import datetime
 import time
 import functools
 import html
+from urllib.parse import unquote
 
 
 # Qt5 exposes many enums directly on their classes, while Qt6 nests them.
@@ -51,6 +52,8 @@ QT_ITEM_DATA_ROLE = getattr(Qt, "ItemDataRole", Qt)
 QT_WINDOW_TYPE = getattr(Qt, "WindowType", Qt)
 QT_LINE_EDIT_ECHO_MODE = getattr(QLineEdit, "EchoMode", QLineEdit)
 QT_MESSAGE_BOX_STANDARD_BUTTON = getattr(QMessageBox, "StandardButton", QMessageBox)
+QGS_IDENTIFY_MODE = getattr(QgsMapToolIdentify, "IdentifyMode", QgsMapToolIdentify)
+QGS_IDENTIFY_TYPE = getattr(QgsMapToolIdentify, "Type", QgsMapToolIdentify)
 
 baseuri = "https://api.costquest.com/"
 collect_calls = 0
@@ -223,11 +226,39 @@ class CQAFabric:
                 return
             input_csv = self.dlg.mQgsFileWidget.filePath()
 
+            try:
+                with open(input_csv, newline="", encoding="utf-8-sig") as file:
+                    reader = csv.reader(file)
+                    next(reader, None)  # Do not count the header row.
+                    exceeds_confirmation_limit = any(
+                        row_number > 10000
+                        for row_number, _row in enumerate(reader, start=1)
+                    )
+            except Exception as exception:
+                self.dlg.infoBox.setText("Unable to read CSV: " + str(exception))
+                self.dlg.infoBox.setStyleSheet("color: red;")
+                QApplication.processEvents()
+                return
+
+            if exceeds_confirmation_limit:
+                reply = QMessageBox.question(
+                    self.dlg,
+                    "Confirm Large Batch",
+                    "The input CSV contains more than 10,000 records. "
+                    "Processing may take a long time. Do you want to continue?",
+                    QT_MESSAGE_BOX_STANDARD_BUTTON.Yes
+                    | QT_MESSAGE_BOX_STANDARD_BUTTON.No,
+                    QT_MESSAGE_BOX_STANDARD_BUTTON.No,
+                )
+                if reply != QT_MESSAGE_BOX_STANDARD_BUTTON.Yes:
+                    return
+
             vintage = self.dlg.comboBox_vintage.currentText()
+            locate_type = "coordinate" if self.dlg.CoorButton.isChecked() else "address"
             timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
             default_output = (
                 os.path.splitext(input_csv)[0]
-                + f"_locations{vintage}_{timestamp}.csv"
+                + f"_{locate_type}_locations{vintage}_{timestamp}.csv"
             )
             output_csv, _ = QFileDialog.getSaveFileName(
                 self.dlg,
@@ -240,9 +271,12 @@ class CQAFabric:
             if not output_csv.lower().endswith(".csv"):
                 output_csv += ".csv"
 
+            # Show is intentionally limited to a quick 500-row preview. Run
+            # the complete, batched request only when the user chooses Save.
             result = self.show_geocode_fabric(populate_table=False)
             if not result:
                 return
+
         else:
             output_csv = None
 
@@ -272,6 +306,48 @@ class CQAFabric:
         self.dlg.infoBox.setStyleSheet("color: red;")
         QApplication.processEvents()
         return False
+
+    def _run_locate_batches(self, vintage, records, batch_size=500):
+        """Locate all records, retrying API failures without losing a batch."""
+        results = []
+        for start in range(0, len(records), batch_size):
+            batch = records[start:start + batch_size]
+            batch_results = None
+            for attempt in range(3):
+                batch_results = locatefabric(
+                    apikey, vintage, batch, neardistancem=100
+                )
+                if batch_results is not None:
+                    break
+                if attempt < 2:
+                    QApplication.processEvents()
+                    time.sleep(2 ** attempt)
+            if batch_results is None:
+                raise RuntimeError(
+                    f"Locate API failed for input records {start + 1}–{start + len(batch)}."
+                )
+            results.extend(batch_results)
+        return results
+
+    def _run_match_batches(self, vintage, records, batch_size=500):
+        """Match all records, retrying API failures without losing a batch."""
+        results = []
+        for start in range(0, len(records), batch_size):
+            batch = records[start:start + batch_size]
+            batch_results = None
+            for attempt in range(3):
+                batch_results = matchfabric(apikey, vintage, batch)
+                if batch_results is not None:
+                    break
+                if attempt < 2:
+                    QApplication.processEvents()
+                    time.sleep(2 ** attempt)
+            if batch_results is None:
+                raise RuntimeError(
+                    f"Match API failed for input records {start + 1}–{start + len(batch)}."
+                )
+            results.extend(batch_results)
+        return results
 
     def _clear_identify_marker(self):
         if self.vertex_marker:
@@ -1101,11 +1177,7 @@ class CQAFabric:
             joinshp.setName(resultName)
             QgsProject.instance().addMapLayer(joinshp)
 
-            # add the csv file to the map
-            csv_layer = QgsVectorLayer(csvoutput_file, os.path.basename(csvoutput_file), "ogr")
-            QgsProject.instance().addMapLayer(csv_layer)
-
-            self.dlg.infoBox.setText(f"{resultName}" + " layer and csv file with selected fields added to the map.")
+            self.dlg.infoBox.setText(f"{resultName} layer with selected fields added to the map.")
             self.dlg.infoBox.setStyleSheet("color: green;")
             self.dlg.saveBtn.setEnabled(False)
             self.dlg.saveBtn.setStyleSheet("color: gray;")
@@ -1123,8 +1195,14 @@ class CQAFabric:
                 return
 
             with open(csvoutput_file, mode="w", newline="") as file:
-            # Get all keys from the first inner dictionary (assuming all dictionaries have the same structure)
-                fieldnames = list(next(iter(combined_data_values)).keys())
+                fieldnames = []
+                for record in combined_data_values:
+                    for fieldname in record:
+                        if fieldname not in fieldnames:
+                            fieldnames.append(fieldname)
+                if "sourcekey" in fieldnames:
+                    fieldnames.remove("sourcekey")
+                    fieldnames.insert(0, "sourcekey")
                 writer = csv.DictWriter(file, fieldnames=fieldnames)
                 # Write the header
                 writer.writeheader()
@@ -1132,11 +1210,7 @@ class CQAFabric:
                 for inner_dict in combined_data_values:
                     writer.writerow(inner_dict)
             
-            # add the csv file to the map
-            csv_layer = QgsVectorLayer(csvoutput_file, os.path.basename(csvoutput_file), "ogr")
-            QgsProject.instance().addMapLayer(csv_layer)
-
-            self.dlg.infoBox.setText(f"{csvoutput_file}" + " file is saved and added to the map.")
+            self.dlg.infoBox.setText(f"{csvoutput_file} file is saved.")
 
             self.dlg.infoBox.setStyleSheet("color: green;")
             self.dlg.saveBtn.setEnabled(False)
@@ -1453,6 +1527,9 @@ class CQAFabric:
             ordered_keys = list(displayname_dict.keys())
             ordered_keys.reverse()
             headers.sort(key=lambda x: ordered_keys.index(x) if x in ordered_keys else 9999)
+            if "sourcekey" in headers:
+                headers.remove("sourcekey")
+                headers.insert(0, "sourcekey")
             headers_display = [displayname_dict[r] if r in displayname_dict else r for r in headers] 
             model.setHorizontalHeaderLabels(headers_display)
     
@@ -1670,49 +1747,76 @@ class CQAFabric:
             return
         self._highlight_locate_results([result])
 
+    def _fabric_layer_details(self, layer):
+        if not isinstance(layer, QgsVectorTileLayer):
+            return None
+        source_candidates = []
+        try:
+            source_uri = layer.dataProvider().dataSourceUri()
+            source_candidates.extend([
+                QgsDataSourceUri(source_uri).param("url"),
+                unquote(source_uri),
+            ])
+        except Exception:
+            pass
+        try:
+            source_candidates.append(unquote(layer.sourcePath()))
+        except Exception:
+            pass
+
+        for tile_url in source_candidates:
+            if not tile_url or "fabric/" not in tile_url or "/tiles/" not in tile_url:
+                continue
+            try:
+                vintage = tile_url.split("fabric/", 1)[1].split("/", 1)[0]
+                fabric_layer = tile_url.split("/tiles/", 1)[1].split("/", 1)[0]
+            except (IndexError, ValueError):
+                continue
+            if vintage and fabric_layer:
+                return vintage, fabric_layer
+
+        # Layers created by this plugin always use this name. This fallback is
+        # needed when QGIS does not expose an XYZ URL through the provider URI.
+        layer_name = layer.name()
+        if layer_name.startswith("Fabric ") and " - " in layer_name:
+            vintage, fabric_layer = layer_name[len("Fabric "):].split(" - ", 1)
+            if vintage and fabric_layer:
+                return vintage.strip(), fabric_layer.strip()
+        return None
+
     def _visible_fabric_layers(self):
         layers = []
         for layer in self.iface.mapCanvas().layers():
-            if not isinstance(layer, QgsVectorTileLayer):
-                continue
-            try:
-                uri = layer.dataProvider().dataSourceUri()
-            except Exception:
-                continue
-            if "fabric/" in uri and "/tiles/" in uri:
+            if self._fabric_layer_details(layer):
                 layers.append(layer)
         return layers
 
-    def _layer_has_feature_at_point(self, layer, point):
-        canvas = self.iface.mapCanvas()
-        canvas_crs = canvas.mapSettings().destinationCrs()
-        click_geometry = QgsGeometry.fromPointXY(QgsPointXY(point))
-        tolerance = max(canvas.mapUnitsPerPixel() * 8, 0.000001)
-        search_geometry = click_geometry.buffer(tolerance, 12)
-
-        if canvas_crs != layer.crs():
-            search_geometry.transform(
-                QgsCoordinateTransform(canvas_crs, layer.crs(), QgsProject.instance())
-            )
-
-        context = QgsSelectionContext()
-        context.setScale(canvas.scale())
-        layer.selectByGeometry(
-            QgsGeometry.fromRect(search_geometry.boundingBox()),
-            context,
-        )
-        has_feature = bool(layer.selectedFeatures())
-        layer.removeSelection()
-        return has_feature
-
     def _top_fabric_layer_at_point(self, point):
-        for layer in self._visible_fabric_layers():
-            try:
-                if self._layer_has_feature_at_point(layer, point):
-                    return layer
-            except Exception:
-                continue
-        return None
+        layers = self._visible_fabric_layers()
+        if not layers:
+            return None
+
+        canvas = self.iface.mapCanvas()
+        tolerance = max(canvas.mapUnitsPerPixel() * 8, 0.000001)
+        search_geometry = QgsGeometry.fromPointXY(
+            QgsPointXY(point.x(), point.y())
+        ).buffer(tolerance, 12)
+        identify_tool = QgsMapToolIdentify(canvas)
+        results = identify_tool.identify(
+            search_geometry,
+            QGS_IDENTIFY_MODE.TopDownAll,
+            layers,
+            QGS_IDENTIFY_TYPE.VectorTileLayer,
+        )
+        for result in results:
+            layer = getattr(result, "mLayer", None)
+            if layer in layers:
+                return layer
+
+        # Some vector-tile providers render correctly but do not expose
+        # identify results. Continue with the top visible Fabric layer so its
+        # layer-specific lookup can handle the click instead of failing early.
+        return layers[0]
 
 
 
@@ -1727,14 +1831,11 @@ class CQAFabric:
             if layer is None:
                 raise ValueError("No visible Fabric feature was found at the clicked location.")
 
-            uri = layer.dataProvider().dataSourceUri()
-            if "url=" not in uri or "fabric/" not in uri or "tiles/" not in uri:
+            layer_details = self._fabric_layer_details(layer)
+            if layer_details is None:
                 raise ValueError("The clicked layer is not a Fabric vector tile layer.")
 
-            # get the url of uri
-            url = uri.split("url=")[1].split("&")[0]
-            selected_vintage = url.split("fabric/")[1].split("/")[0]
-            selected_layer = url.split("tiles/")[1].split("/")[0]
+            selected_vintage, selected_layer = layer_details
             geom = QgsGeometry.fromPointXY(QgsPointXY(point.x(), point.y()))
             displayname_dict = getfieldsdisplayname(selected_vintage, selected_layer, apikey)
 
@@ -1834,6 +1935,7 @@ class CQAFabric:
         self.dlg.saveBtn.clicked.connect(self._save_locate_result)
         self.dlg.tableResult.clicked.connect(self._on_locate_result_clicked)
         self.dlg.checkBox_CSV.toggled.connect(self._update_locate_save_button)
+        self._update_locate_save_button(self.dlg.checkBox_CSV.isChecked())
         # when dlg is closed, uncheck the action
         self.dlg.finished.connect(self._on_locate_dialog_finished)
 
@@ -1857,6 +1959,7 @@ class CQAFabric:
         selected_layer = "locations"
         preview_limit = 500 if populate_table and self.dlg.checkBox_CSV.isChecked() else None
         preview_truncated = False
+        batch_sourcekeys = []
         n = 0
         if self.dlg.AddrButton.isChecked():
             coordinates_data = []
@@ -1902,18 +2005,27 @@ class CQAFabric:
                     for addresstext in addresstexts
                     for sourcekey, address in addresstext.items()
                 ]
-                match_results = matchfabric(apikey, selected_vintage, address_data) or []
+                batch_sourcekeys = [item["sourcekey"] for item in address_data]
+                try:
+                    match_results = self._run_match_batches(
+                        selected_vintage, address_data
+                    )
+                except RuntimeError as exception:
+                    self.dlg.infoBox.setText(str(exception))
+                    self.dlg.infoBox.setStyleSheet("color: red;")
+                    QApplication.processEvents()
+                    return
                 for match_result in match_results:
                     sourcekey = match_result.get("sourcekey")
                     for item in match_result.get("locations") or []:
-                        data_1.append({"uuid":item['uuid'],"location_id":item['location_id'],"Latitude":item['latitude'],"Longitude":item['longitude'],"sourcekey": sourcekey})
+                        data_1.append({"uuid":item['uuid'],"location_id":item['location_id'],"latitude":item['latitude'],"longitude":item['longitude'],"sourcekey": sourcekey})
             else:
                 for addresstext in addresstexts:
                     for sourcekey, address in addresstext.items():
                         data = matchautocomplete(apikey, address, selected_vintage)
                         if data:
                             for item in data.get("locations") or []:
-                                data_1.append({"uuid":item['uuid'],"location_id":item['location_id'],"Latitude":item['latitude'],"Longitude":item['longitude'],"sourcekey": sourcekey})
+                                data_1.append({"uuid":item['uuid'],"location_id":item['location_id'],"latitude":item['latitude'],"longitude":item['longitude'],"sourcekey": sourcekey})
                           
                                     
 
@@ -1955,11 +2067,20 @@ class CQAFabric:
                             lon_col = next((col for col in row.keys() if col.lower() == 'longitude'), None)
                             sourcekey_col = next((col for col in row.keys() if col.lower() == 'sourcekey'), None)
                             if lat_col and lon_col and sourcekey_col:
+                                sourcekey = row[sourcekey_col]
+                                batch_sourcekeys.append(sourcekey)
+                                try:
+                                    latitude = float(row[lat_col])
+                                    longitude = float(row[lon_col])
+                                except (TypeError, ValueError):
+                                    continue
+                                if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
+                                    continue
                                 coordinates_data.append({
-                            "latitude": row[lat_col],
-                            "longitude": row[lon_col],
-                            "sourcekey": row[sourcekey_col]
-                            })
+                                    "latitude": latitude,
+                                    "longitude": longitude,
+                                    "sourcekey": sourcekey,
+                                })
                             else:
                                 self.dlg.infoBox.setText("CSV file should contain 'latitude', 'longitude', and'sourcekey' columns.")
                                 self.dlg.infoBox.setStyleSheet("color: red;")
@@ -1974,8 +2095,32 @@ class CQAFabric:
                     return
         
         
-            data_1 = locatefabric(apikey, selected_vintage, coordinates_data, neardistancem=100)
-        if not data_1:
+            try:
+                data_1 = self._run_locate_batches(
+                    selected_vintage, coordinates_data
+                )
+            except RuntimeError as exception:
+                self.dlg.infoBox.setText(str(exception))
+                self.dlg.infoBox.setStyleSheet("color: red;")
+                QApplication.processEvents()
+                return
+        if (
+            not data_1
+            and self.dlg.checkBox_CSV.isChecked()
+            and not populate_table
+            and batch_sourcekeys
+        ):
+            data_1 = [
+                {
+                    "uuid": None,
+                    "location_id": None,
+                    "latitude": None,
+                    "longitude": None,
+                    "sourcekey": sourcekey,
+                }
+                for sourcekey in batch_sourcekeys
+            ]
+        elif not data_1:
             self.dlg.saveBtn.setEnabled(False)
             self.dlg.saveBtn.setStyleSheet("color: gray;")
             self.dlg.infoBox.setText("No fabric records were returned for the current input.")
@@ -2047,7 +2192,13 @@ class CQAFabric:
                     displayname_dict = getfieldsdisplayname(selected_vintage,selected_layer,apikey)
                     ordered_keys = list(displayname_dict.keys())
                     ordered_keys.reverse()
-                    combined_data_values = attach(selected_vintage,selected_layer, ids, fieldnames, apikey) or []
+                    combined_data_values = attach(
+                        selected_vintage,
+                        selected_layer,
+                        ids,
+                        fieldnames,
+                        apikey,
+                    ) or []
                     if not combined_data_values:
                         self.dlg.infoBox.setText("No attribute records were returned by the API.")
                         self.dlg.infoBox.setStyleSheet("color: red;")
@@ -2072,11 +2223,41 @@ class CQAFabric:
                     
                     # order the items in data by sourcekey
                     combined_data_values.sort(key=lambda x: x['sourcekey'])
+                else:
+                    combined_data_values = []
             
             else:
                 # Remove the item in data_1 that has no location_id
                 data_1 = [item for item in data_1 if item.get('location_id')]
                 combined_data_values = data_1
+
+            if self.dlg.checkBox_CSV.isChecked() and not populate_table:
+                matched_sourcekeys = {
+                    str(item.get("sourcekey"))
+                    for item in combined_data_values
+                    if item.get("sourcekey") is not None
+                }
+                result_fields = []
+                for item in combined_data_values:
+                    for fieldname in item:
+                        if fieldname not in result_fields:
+                            result_fields.append(fieldname)
+                if self.dlg.checkBox_attribute.isChecked() and not combined_data_values:
+                    for fieldname in (
+                        getfieldsinfo(selected_vintage, selected_layer, apikey) or []
+                    ):
+                        if fieldname not in result_fields:
+                            result_fields.append(fieldname)
+                for fieldname in ("uuid", "location_id", "latitude", "longitude", "sourcekey"):
+                    if fieldname not in result_fields:
+                        result_fields.append(fieldname)
+
+                for sourcekey in batch_sourcekeys:
+                    if str(sourcekey) in matched_sourcekeys:
+                        continue
+                    unmatched_record = {fieldname: None for fieldname in result_fields}
+                    unmatched_record["sourcekey"] = sourcekey
+                    combined_data_values.append(unmatched_record)
 
             """
             Populate the tableResult QTableView with data.
