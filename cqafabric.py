@@ -273,8 +273,12 @@ class CQAFabric:
 
             # Show is intentionally limited to a quick 500-row preview. Run
             # the complete, batched request only when the user chooses Save.
+            self.dlg.progressBar.setRange(0, 100)
+            self.dlg.progressBar.setValue(0)
+            self.dlg.progressBar.setFormat("Saving... %p%")
             result = self.show_geocode_fabric(populate_table=False)
             if not result:
+                self.dlg.progressBar.setFormat("Save failed")
                 return
 
         else:
@@ -307,10 +311,11 @@ class CQAFabric:
         QApplication.processEvents()
         return False
 
-    def _run_locate_batches(self, vintage, records, batch_size=500):
+    def _run_locate_batches(self, vintage, records, batch_size=500, progress_callback=None):
         """Locate all records, retrying API failures without losing a batch."""
         results = []
-        for start in range(0, len(records), batch_size):
+        total_requests = max(1, (len(records) + batch_size - 1) // batch_size)
+        for request_index, start in enumerate(range(0, len(records), batch_size), start=1):
             batch = records[start:start + batch_size]
             batch_results = None
             for attempt in range(3):
@@ -327,12 +332,15 @@ class CQAFabric:
                     f"Locate API failed for input records {start + 1}–{start + len(batch)}."
                 )
             results.extend(batch_results)
+            if progress_callback:
+                progress_callback(request_index, total_requests)
         return results
 
-    def _run_match_batches(self, vintage, records, batch_size=500):
+    def _run_match_batches(self, vintage, records, batch_size=500, progress_callback=None):
         """Match all records, retrying API failures without losing a batch."""
         results = []
-        for start in range(0, len(records), batch_size):
+        total_requests = max(1, (len(records) + batch_size - 1) // batch_size)
+        for request_index, start in enumerate(range(0, len(records), batch_size), start=1):
             batch = records[start:start + batch_size]
             batch_results = None
             for attempt in range(3):
@@ -347,6 +355,8 @@ class CQAFabric:
                     f"Match API failed for input records {start + 1}–{start + len(batch)}."
                 )
             results.extend(batch_results)
+            if progress_callback:
+                progress_callback(request_index, total_requests)
         return results
 
     def _clear_identify_marker(self):
@@ -1187,13 +1197,16 @@ class CQAFabric:
             
             
     def load_csv_result(self, combined_data_values, csvoutput_file):
-            self.dlg.progressBar.resetFormat()
             if not csvoutput_file or not combined_data_values:
                 self.dlg.infoBox.setText("Locate results are not ready to export yet.")
                 self.dlg.infoBox.setStyleSheet("color: red;")
                 QApplication.processEvents()
                 return
 
+            self.dlg.progressBar.setRange(0, 100)
+            self.dlg.progressBar.setValue(95)
+            self.dlg.progressBar.setFormat("Saving... %p%")
+            QApplication.processEvents()
             with open(csvoutput_file, mode="w", newline="") as file:
                 fieldnames = []
                 for record in combined_data_values:
@@ -1215,7 +1228,8 @@ class CQAFabric:
             self.dlg.infoBox.setStyleSheet("color: green;")
             self.dlg.saveBtn.setEnabled(False)
             self.dlg.saveBtn.setStyleSheet("color: gray;")
-            self.dlg.progressBar.setFormat("Save Completed")
+            self.dlg.progressBar.setValue(100)
+            self.dlg.progressBar.setFormat("Save Completed - 100%")
             QApplication.processEvents()
 
 
@@ -1232,8 +1246,9 @@ class CQAFabric:
         self.dlg.saveCsvBtn.setEnabled(False)
         self.dlg.saveCsvBtn.setStyleSheet("color: gray;")
         self.dlg.progressBar.reset()
-        self.dlg.progressBar.resetFormat()
-        self.dlg.progressBar.setFormat("Loading data...")
+        self.dlg.progressBar.setRange(0, 100)
+        self.dlg.progressBar.setValue(0)
+        self.dlg.progressBar.setFormat("Retrieving... %p%")
         QApplication.processEvents()
         global vector_tile_layer      
         global define_layer_name
@@ -1314,6 +1329,7 @@ class CQAFabric:
                         global output_file, combined_data_values
                         dissolved = processing.run("native:dissolve", {'INPUT': Define_Layer,'FIELD':[],'SEPARATE_DISJOINT':False, 'OUTPUT': 'TEMPORARY_OUTPUT'})['OUTPUT']
                         dissolved_features = list(dissolved.getFeatures())
+                        task.setProgress(15)
 
                         # Use QgsJsonExporter to export selected features to GeoJSON    
                         exporter = QgsJsonExporter(dissolved)
@@ -1347,6 +1363,7 @@ class CQAFabric:
                         # Save the geometries to a new JSON file
                         with open(output_file, "w") as f:
                             json.dump(geometries[0], f, indent=2)
+                        task.setProgress(30)
                             
                         try:
                             os.remove(input_file)
@@ -1360,6 +1377,7 @@ class CQAFabric:
                             self.dlg.setDisabled(False)
                             QApplication.processEvents()
                             return
+                        task.setProgress(95)
                         return combined_data_values
 
 
@@ -1367,6 +1385,7 @@ class CQAFabric:
                     global vector_tile_layer, define_layer_name, selected_layer, selected_vintage, combined_data_values
                     model = QStandardItemModel()
                     if not combined_data_values:
+                        self.dlg.progressBar.setFormat("Retrieve failed")
                         self.dlg.tableResult.setModel(model)
                         self.dlg.setDisabled(False)
                         return
@@ -1384,6 +1403,8 @@ class CQAFabric:
                     self.dlg.saveBtn.setStyleSheet("color: green;")
                     self.dlg.saveCsvBtn.setEnabled(True)
                     self.dlg.saveCsvBtn.setStyleSheet("color: green;")
+                    self.dlg.progressBar.setValue(100)
+                    self.dlg.progressBar.setFormat("Retrieve Completed - 100%")
                     self.dlg.setDisabled(False)
                     try:
                         os.remove(output_file)
@@ -1409,6 +1430,9 @@ class CQAFabric:
                     progress_callback,
                     on_finished=on_dissolve_collect_finished
                 )
+                task.progressChanged.connect(
+                    lambda value: self.dlg.progressBar.setValue(int(value))
+                )
                 QgsApplication.taskManager().addTask(task)
 
             else:
@@ -1420,15 +1444,8 @@ class CQAFabric:
                     global combined_data_values
                     ids = []
                     try:
-                        for feature_id in feature_ids:
-                            Define_Layer.selectByIds([feature_id])
-                            box = Define_Layer.boundingBoxOfSelected()
-                            # match the box projection to the map projection
-                            if not box.isNull():
-                                # Set the extent of the map canvas to the bounding box of the selected features
-                                self.iface.mapCanvas().setDestinationCrs(Define_Layer.crs())
-                                self.iface.mapCanvas().setExtent(box)
-                                self.iface.mapCanvas().refresh()
+                        total_features = max(len(feature_ids), 1)
+                        for feature_number, feature_id in enumerate(feature_ids, start=1):
                             geometry = Define_Layer.getGeometry(feature_id)
                             context = QgsSelectionContext()
                             context.setScale(10000)
@@ -1439,6 +1456,7 @@ class CQAFabric:
                             for feature in vector_tile_layer.selectedFeatures(): 
                                 uuid=feature.attributes()[0]
                                 ids.append(uuid)
+                            task.setProgress(int(70 * feature_number / total_features))
                     except Exception as exception:
                         self.dlg.infoBox.setText("Error during selection: " + str(exception))
                         self.dlg.infoBox.setStyleSheet("color: red;")
@@ -1449,6 +1467,7 @@ class CQAFabric:
                     self.dlg.infoBox.setStyleSheet("")
                     QApplication.processEvents()
                     self.dlg.progressBar.resetFormat()
+                    task.setProgress(75)
                     try:
                         combined_data_values = attach(selected_vintage,selected_layer, ids, selected_fields, apikey)
                     except Exception as exception:
@@ -1457,6 +1476,7 @@ class CQAFabric:
                         self.dlg.setDisabled(False)
                         QApplication.processEvents()
                         return
+                    task.setProgress(95)
                     return combined_data_values
                 # Run selection in background
                 def on_finished(exception, result=None):
@@ -1464,6 +1484,7 @@ class CQAFabric:
                     # ...rest of your table/model code...
                     model = QStandardItemModel()
                     if not combined_data_values:
+                        self.dlg.progressBar.setFormat("Retrieve failed")
                         self.dlg.tableResult.setModel(model)
                         self.dlg.setDisabled(False)
                         return
@@ -1481,6 +1502,8 @@ class CQAFabric:
                     self.dlg.saveBtn.setStyleSheet("color: green;")
                     self.dlg.saveCsvBtn.setEnabled(True)
                     self.dlg.saveCsvBtn.setStyleSheet("color: green;")
+                    self.dlg.progressBar.setValue(100)
+                    self.dlg.progressBar.setFormat("Retrieve Completed - 100%")
                     self.dlg.setDisabled(False)
                     QApplication.processEvents()
                     return vector_tile_layer,define_layer_name, selected_layer, selected_vintage, combined_data_values
@@ -1499,7 +1522,10 @@ class CQAFabric:
                 temp_dir,
                 progress_callback,
                 on_finished=on_finished
-            )
+                )
+                task.progressChanged.connect(
+                    lambda value: self.dlg.progressBar.setValue(int(value))
+                )
                 QgsApplication.taskManager().addTask(task)
                 # check if the task is still running when the dialog is closed
                 
@@ -1960,6 +1986,14 @@ class CQAFabric:
         preview_limit = 500 if populate_table and self.dlg.checkBox_CSV.isChecked() else None
         preview_truncated = False
         batch_sourcekeys = []
+        save_progress = None
+        if not populate_table:
+            def save_progress(completed_requests, total_requests):
+                percent = 5 + int(
+                    65 * completed_requests / max(total_requests, 1)
+                )
+                self.dlg.progressBar.setValue(percent)
+                QApplication.processEvents()
         n = 0
         if self.dlg.AddrButton.isChecked():
             coordinates_data = []
@@ -2008,7 +2042,8 @@ class CQAFabric:
                 batch_sourcekeys = [item["sourcekey"] for item in address_data]
                 try:
                     match_results = self._run_match_batches(
-                        selected_vintage, address_data
+                        selected_vintage, address_data,
+                        progress_callback=save_progress,
                     )
                 except RuntimeError as exception:
                     self.dlg.infoBox.setText(str(exception))
@@ -2097,7 +2132,8 @@ class CQAFabric:
         
             try:
                 data_1 = self._run_locate_batches(
-                    selected_vintage, coordinates_data
+                    selected_vintage, coordinates_data,
+                    progress_callback=save_progress,
                 )
             except RuntimeError as exception:
                 self.dlg.infoBox.setText(str(exception))
@@ -2131,6 +2167,8 @@ class CQAFabric:
         if data_1:
             if self.dlg.checkBox_attribute.isChecked():
                 self.dlg.infoBox.setText("Locate fabrics completed successfully, starting to attach attributes...")
+                if not populate_table:
+                    self.dlg.progressBar.setValue(75)
                 QApplication.processEvents()
                 from collections import defaultdict
                 locationid_key = defaultdict(list)
@@ -2199,6 +2237,9 @@ class CQAFabric:
                         fieldnames,
                         apikey,
                     ) or []
+                    if not populate_table:
+                        self.dlg.progressBar.setValue(90)
+                        QApplication.processEvents()
                     if not combined_data_values:
                         self.dlg.infoBox.setText("No attribute records were returned by the API.")
                         self.dlg.infoBox.setStyleSheet("color: red;")
