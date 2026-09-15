@@ -1,5 +1,5 @@
 [![GitHub release](https://img.shields.io/github/v/release/costquestassociates/cqafabric_QGIS)](https://github.com/costquestassociates/cqafabric_QGIS/releases)
-<h1>cqafabric</h1>
+<h1>CQA Fabric QGIS Plugin</h1>
 
 &nbsp;&nbsp;&nbsp;&nbsp;![cqafabric](icons/Fabric-3_CircleBG_Patina-100.png)
 <h2>Description</h2>
