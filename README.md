@@ -1,7 +1,17 @@
 [![GitHub release](https://img.shields.io/github/v/release/costquestassociates/cqafabric_QGIS)](https://github.com/costquestassociates/cqafabric_QGIS/releases)
-<h1>cqafabric</h1>
+<h1>CQA Fabric QGIS Plugin</h1>
 
 &nbsp;&nbsp;&nbsp;&nbsp;![cqafabric](icons/Fabric-3_CircleBG_Patina-100.png)
+<h2>Description</h2>
+The CQA Fabric QGIS Plugin connects QGIS with CostQuest’s Fabric APIs, enabling users to access and analyze Broadband Fabric data directly within QGIS. The plugin streamlines Fabric data visualization and analysis by reducing manual API requests, file conversions, and data imports.
+
+
+<h2>Requirements</h2>
+
+- A supported version of QGIS.
+- The CQA Fabric QGIS Plugin installed from its ZIP package.
+- A valid CostQuest API key with permission
+
 
 <h2>Installation</h2>
 
@@ -26,31 +36,31 @@ Use API Key to access CQA Fabric APIs. To request an API key, please contact API
 <h2>Overview</h2>
 
 QGIS plugin to use CQA Fabric APIs.</br>
-    ![image](https://github.com/user-attachments/assets/0467ac97-0e56-46f7-83aa-42a788b18b62)
+    <img width="435" height="29" alt="image" src="https://github.com/user-attachments/assets/7e6e6335-a297-41fa-921d-f572afb2c31a" />
     </br>
     <li><b>Add Fabric Tiles</b><br>
     Add fabric tiles/source by vintage and layer. </br>
-    ![image](https://github.com/user-attachments/assets/ac6338d0-c1a8-49fa-98fc-72211e95cdbf)
+    <img width="434" height="131" alt="image" src="https://github.com/user-attachments/assets/4dcec75b-1e7c-4544-9af9-abcb312f6f1e" />
     </br>
     </br>
     </li>
     </br>
     <li><b>Retrieve Fabric</b><br>
     Retrieve fabric attribute/geometry by vintage and layer. </br>
-    ![image](https://github.com/user-attachments/assets/22843aba-9f16-41ca-acde-3156cb9eae7c)
+    <img width="696" height="515" alt="image" src="https://github.com/user-attachments/assets/dfb5e5fa-2eac-4c7d-b006-bfc167177c9d" />
     </br>
     </br>
     </li>
     <li><b>Identify Fabric</b><br>
     Identify fabric location/footprint/parcel by clicking feature.</br>
-    ![image](https://github.com/user-attachments/assets/12aa834c-416c-440a-8008-5e784a28b503)
-    ![image](https://github.com/user-attachments/assets/6a96fbdd-0bc7-41ec-a5f4-b1f77d503b61)
+    <img width="295" height="55" alt="image" src="https://github.com/user-attachments/assets/7244ed53-ba30-44a8-b6a1-36903dac19a6" /></br>
+    <img width="437" height="368" alt="image" src="https://github.com/user-attachments/assets/7ed8a008-2986-4d4d-a77d-69869a0ddba0" />
     </br>
     </br>
     </li>
     <li><b>Locate Fabric</b><br>
-    Get fabric location by coordinate/address.</br>
-    ![image](https://github.com/user-attachments/assets/73bdb951-989d-467e-9b1d-aedb370079af)
+    Locate Fabric records using coordinates or street addresses</br>
+    <img width="596" height="349" alt="image" src="https://github.com/user-attachments/assets/397d5a8b-159c-4cec-bc9c-01e3b38adfc9" />
     </br>
     </br></li>
 
