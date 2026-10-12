@@ -63,10 +63,10 @@ class RetrieveDataDialog(QtWidgets.QDialog, FORM_CLASS):
         self.selectSingleBtn.setAutoDefault(False)
         self.unselectSingleBtn.setAutoDefault(False)
         self.unselectAllBtn.setAutoDefault(False)
-        user_name = os.getlogin()
-        # Check whether the API file already exists 
+        # Use the same active-profile location as the main plugin.
         global apikey
-        apikey_file = os.path.join(r"C:\Users",user_name, 'AppData\Roaming\QGIS', 'QGIS_CQAFabric.config')
+        profile_dir = os.path.normpath(QgsApplication.qgisSettingsDirPath())
+        apikey_file = os.path.join(profile_dir, 'QGIS_CQAFabric.config')
         if os.path.exists(apikey_file):
             # Read the API key from the file
             with open(apikey_file, 'r') as f:

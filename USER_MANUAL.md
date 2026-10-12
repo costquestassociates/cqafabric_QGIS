@@ -186,8 +186,11 @@ sourcekey,latitude,longitude
 
 The plugin creates or uses the following local files:
 
-- Saved API key configuration: `C:\Users\<your-user>\AppData\Roaming\QGIS\QGIS_CQAFabric.config`
-- Temporary and demo files root folder: `C:\Users\<your-user>\AppData\Roaming\QGIS\Temp\`
+- Saved API key configuration: `<active QGIS profile>\QGIS_CQAFabric.config`
+- Temporary and demo files root folder: `<active QGIS profile>\Temp\`
+
+For example, the default QGIS 4 profile on Windows is normally under
+`C:\Users\<your-user>\AppData\Roaming\QGIS\QGIS4\profiles\default\`.
 
 ## Troubleshooting
 
